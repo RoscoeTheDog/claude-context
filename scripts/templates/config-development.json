@@ -1,0 +1,36 @@
+{
+  "description": "Development configuration with detailed logging",
+  
+  "apiKeys": {
+    "openai": "",
+    "zilliz": ""
+  },
+  
+  "embeddingProvider": "OpenAI",
+  "embeddingModel": "text-embedding-3-small",
+  
+  "installation": {
+    "verbose": true,
+    "createBackup": true,
+    "skipTests": false
+  },
+  
+  "advanced": {
+    "nodeEnvironment": "development",
+    "logLevel": "debug",
+    "serverName": "claude-context-dev"
+  },
+  
+  "_development": {
+    "notes": [
+      "This configuration is for development use",
+      "Verbose logging is enabled",
+      "API keys should be set via environment variables",
+      "Server name includes 'dev' suffix"
+    ],
+    "envRequired": [
+      "OPENAI_API_KEY",
+      "ZILLIZ_API_KEY"
+    ]
+  }
+}

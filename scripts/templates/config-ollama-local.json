@@ -1,0 +1,31 @@
+{
+  "description": "Ollama local + Custom Milvus configuration",
+  
+  "apiKeys": {
+    "zilliz": "your-zilliz-token-or-leave-empty-for-local"
+  },
+  
+  "embeddingProvider": "Ollama",
+  "embeddingModel": "mxbai-embed-large",
+  "milvusAddress": "localhost:19530",
+  
+  "installation": {
+    "verbose": true,
+    "createBackup": true,
+    "skipTests": false
+  },
+  
+  "advanced": {
+    "nodeEnvironment": "development",
+    "logLevel": "debug"
+  },
+  
+  "_notes": {
+    "setup": [
+      "1. Install and run Ollama: https://ollama.ai/",
+      "2. Pull the embedding model: ollama pull mxbai-embed-large",
+      "3. Install and run Milvus locally or use Zilliz Cloud",
+      "4. Update milvusAddress and apiKeys as needed"
+    ]
+  }
+}

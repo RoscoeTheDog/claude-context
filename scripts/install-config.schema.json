@@ -1,0 +1,113 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "title": "Claude Context Installation Configuration Schema",
+  "description": "Schema for claude-context MCP server installation configuration",
+  
+  "properties": {
+    "apiKeys": {
+      "type": "object",
+      "description": "API keys for various services",
+      "properties": {
+        "openai": {
+          "type": "string",
+          "description": "OpenAI API key (sk-...)",
+          "pattern": "^(sk-[a-zA-Z0-9]{48,})?$"
+        },
+        "zilliz": {
+          "type": "string", 
+          "description": "Zilliz Cloud API key",
+          "minLength": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    
+    "embeddingProvider": {
+      "type": "string",
+      "description": "Embedding provider to use",
+      "enum": ["OpenAI", "VoyageAI", "Gemini", "Ollama"],
+      "default": "OpenAI"
+    },
+    
+    "embeddingModel": {
+      "type": "string",
+      "description": "Model name for embeddings",
+      "default": "text-embedding-3-small",
+      "examples": [
+        "text-embedding-3-small",
+        "text-embedding-3-large", 
+        "voyage-3-large",
+        "gemini-embedding-001",
+        "mxbai-embed-large"
+      ]
+    },
+    
+    "milvusAddress": {
+      "type": "string",
+      "description": "Custom Milvus server address (optional)",
+      "format": "uri",
+      "examples": [
+        "localhost:19530",
+        "https://in03-xxx.serverless.gcp-us-west1.cloud.zilliz.com"
+      ]
+    },
+    
+    "installation": {
+      "type": "object",
+      "description": "Installation behavior options",
+      "properties": {
+        "verbose": {
+          "type": "boolean",
+          "description": "Show detailed output during installation",
+          "default": false
+        },
+        "createBackup": {
+          "type": "boolean", 
+          "description": "Backup existing Claude configuration",
+          "default": true
+        },
+        "skipTests": {
+          "type": "boolean",
+          "description": "Skip post-installation tests",
+          "default": false
+        }
+      },
+      "additionalProperties": false
+    },
+    
+    "advanced": {
+      "type": "object",
+      "description": "Advanced configuration options",
+      "properties": {
+        "nodeEnvironment": {
+          "type": "string",
+          "description": "Node.js environment mode",
+          "enum": ["development", "production", "test"],
+          "default": "production"
+        },
+        "logLevel": {
+          "type": "string",
+          "description": "Logging level",
+          "enum": ["error", "warn", "info", "debug"],
+          "default": "info"
+        },
+        "serverName": {
+          "type": "string",
+          "description": "MCP server name in Claude configuration",
+          "default": "claude-context",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9-_]*$"
+        },
+        "serverVersion": {
+          "type": "string", 
+          "description": "Server version identifier",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+.*$"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  
+  "required": [],
+  "additionalProperties": true
+}

@@ -1,0 +1,21 @@
+{
+  "description": "VoyageAI + Zilliz Cloud configuration",
+  
+  "apiKeys": {
+    "voyageai": "pa-your-voyageai-key-here",
+    "zilliz": "your-zilliz-cloud-token"
+  },
+  
+  "embeddingProvider": "VoyageAI",
+  "embeddingModel": "voyage-3-large",
+  
+  "installation": {
+    "verbose": false,
+    "createBackup": true,
+    "skipTests": false
+  },
+  
+  "advanced": {
+    "logLevel": "info"
+  }
+}

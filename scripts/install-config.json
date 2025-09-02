@@ -1,0 +1,43 @@
+{
+  "$schema": "./install-config.schema.json",
+  "description": "Claude Context MCP Server Installation Configuration",
+  "version": "1.0.0",
+  
+  "apiKeys": {
+    "openai": "",
+    "zilliz": ""
+  },
+  
+  "embeddingProvider": "OpenAI",
+  "embeddingModel": "text-embedding-3-small",
+  
+  "milvusAddress": "",
+  
+  "installation": {
+    "verbose": true,
+    "createBackup": true,
+    "skipTests": false
+  },
+  
+  "advanced": {
+    "nodeEnvironment": "production",
+    "logLevel": "info",
+    "serverName": "claude-context",
+    "serverVersion": "0.1.3"
+  },
+  
+  "_comments": {
+    "apiKeys.openai": "Your OpenAI API key (sk-...). Leave empty to use OPENAI_API_KEY environment variable",
+    "apiKeys.zilliz": "Your Zilliz Cloud API key. Leave empty to use ZILLIZ_API_KEY environment variable", 
+    "embeddingProvider": "Embedding provider: OpenAI, VoyageAI, Gemini, or Ollama",
+    "embeddingModel": "Model name for embeddings. Provider-specific model names",
+    "milvusAddress": "Custom Milvus address if not using Zilliz Cloud (optional)",
+    "installation.verbose": "Show detailed build output during installation",
+    "installation.createBackup": "Backup existing Claude configuration before installing",
+    "installation.skipTests": "Skip MCP server functionality tests after installation",
+    "advanced.nodeEnvironment": "Node.js environment mode",
+    "advanced.logLevel": "Logging level for the MCP server",
+    "advanced.serverName": "Name for the MCP server in Claude configuration",
+    "advanced.serverVersion": "Version identifier for the MCP server"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "description": "OpenAI + Zilliz Cloud configuration",
+  
+  "apiKeys": {
+    "openai": "sk-proj-your-openai-key-here",
+    "zilliz": "your-zilliz-cloud-token"
+  },
+  
+  "embeddingProvider": "OpenAI",
+  "embeddingModel": "text-embedding-3-small",
+  
+  "installation": {
+    "verbose": false,
+    "createBackup": true,
+    "skipTests": false
+  }
+}

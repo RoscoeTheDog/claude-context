@@ -1,0 +1,8 @@
+{
+  "description": "Minimal configuration for claude-context MCP server",
+  
+  "apiKeys": {
+    "openai": "sk-your-openai-key-here",
+    "zilliz": "your-zilliz-token-here"
+  }
+}

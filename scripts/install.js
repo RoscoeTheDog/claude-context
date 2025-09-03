@@ -207,7 +207,17 @@ class ClaudeContextInstaller {
     }
 
     createClaudeConfig() {
-        this.log('Creating Claude configuration...');
+        this.log('Creating Claude Desktop and Claude Code CLI configuration...');
+
+        // Configure Claude Desktop
+        this.configureClaudeDesktop();
+        
+        // Configure Claude Code CLI
+        this.configureClaudeCodeCLI();
+    }
+
+    configureClaudeDesktop() {
+        this.log('Configuring Claude Desktop...');
 
         // Ensure Claude config directory exists
         if (!fs.existsSync(this.claudeConfigDir)) {
@@ -263,9 +273,71 @@ class ClaudeContextInstaller {
         // Write new configuration
         try {
             fs.writeFileSync(configPath, JSON.stringify(claudeConfig, null, 2));
-            this.success(`Claude configuration created: ${configPath}`);
+            this.success(`Claude Desktop configuration created: ${configPath}`);
         } catch (error) {
-            this.error(`Failed to write Claude configuration: ${error.message}`);
+            this.error(`Failed to write Claude Desktop configuration: ${error.message}`);
+        }
+    }
+
+    configureClaudeCodeCLI() {
+        this.log('Configuring Claude Code CLI...');
+
+        const mcpServerPath = path.join(this.projectRoot, 'packages', 'mcp', 'dist', 'index.js');
+        const apiKeys = this.getApiKeys();
+
+        try {
+            // First, try to remove existing server if it exists
+            try {
+                this.log('Checking for existing Claude Code CLI MCP server...');
+                execSync('claude mcp remove claude-context -s user', { 
+                    stdio: 'pipe',
+                    encoding: 'utf8'
+                });
+                this.log('Removed existing MCP server configuration');
+            } catch (removeError) {
+                // It's fine if removal fails (server might not exist)
+                this.log('No existing MCP server found (expected for fresh installation)');
+            }
+
+            // Build the claude mcp add command
+            let command = `claude mcp add claude-context node "${mcpServerPath}" -s user`;
+            
+            // Add environment variables
+            if (apiKeys.openai) {
+                command += ` -e OPENAI_API_KEY=${apiKeys.openai}`;
+            }
+
+            if (apiKeys.zilliz) {
+                command += ` -e MILVUS_TOKEN=${apiKeys.zilliz}`;
+            }
+
+            if (this.config.embeddingProvider) {
+                command += ` -e EMBEDDING_PROVIDER=${this.config.embeddingProvider}`;
+            }
+
+            if (this.config.embeddingModel) {
+                command += ` -e EMBEDDING_MODEL=${this.config.embeddingModel}`;
+            }
+
+            if (this.config.milvusAddress) {
+                command += ` -e MILVUS_ADDRESS=${this.config.milvusAddress}`;
+            }
+
+            // Execute the command to add MCP server to Claude Code CLI
+            this.log('Adding MCP server to Claude Code CLI with user scope...');
+            execSync(command, { 
+                stdio: this.config.verbose ? 'inherit' : 'pipe',
+                encoding: 'utf8'
+            });
+
+            this.success('Claude Code CLI configuration completed');
+        } catch (error) {
+            if (error.message.includes('already exists')) {
+                this.success('Claude Code CLI MCP server already configured');
+            } else {
+                this.log(`Warning: Failed to configure Claude Code CLI: ${error.message}`, 'error');
+                this.log('You may need to manually run: claude mcp add claude-context node "' + mcpServerPath + '" -s user [with environment variables]');
+            }
         }
     }
 
@@ -324,10 +396,15 @@ class ClaudeContextInstaller {
             
             this.success('Installation completed successfully!');
             this.log('');
+            this.log('Configuration completed for:');
+            this.log('✅ Claude Desktop - Restart Claude Desktop to load the MCP server');
+            this.log('✅ Claude Code CLI - MCP server configured globally with user scope');
+            this.log('');
             this.log('Next steps:');
             this.log('1. Restart Claude Desktop to load the new MCP server');
-            this.log('2. The claude-context server will be available for code indexing');
-            this.log('3. Run "node scripts/verify.js" to verify the installation');
+            this.log('2. Test Claude Code CLI: Open any terminal and run "claude mcp list"');
+            this.log('3. The claude-context server will be available for code indexing in both environments');
+            this.log('4. Run "node scripts/verify.js" to verify the installation');
             this.log('');
             
         } catch (error) {

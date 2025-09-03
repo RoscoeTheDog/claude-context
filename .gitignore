@@ -29,8 +29,9 @@ pids
 
 
 
-# IDE
-# .vscode/
+# IDE and Editor Configurations
+.vscode/
+.serena/
 .idea/
 *.swp
 *.swo

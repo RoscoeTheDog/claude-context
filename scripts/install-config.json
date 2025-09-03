@@ -25,6 +25,24 @@
     "serverName": "claude-context",
     "serverVersion": "0.1.3"
   },
+
+  "features": {
+    "realtimeSync": {
+      "enabled": true,
+      "autoEnable": false,
+      "debounceMs": 500
+    },
+    "performance": {
+      "connectionPooling": true,
+      "mtimeCache": true,
+      "incrementalSync": true
+    },
+    "monitoring": {
+      "auditLogging": true,
+      "performanceMetrics": true,
+      "healthChecks": true
+    }
+  },
   
   "_comments": {
     "apiKeys.openai": "Your OpenAI API key (sk-...). Leave empty to use OPENAI_API_KEY environment variable",
@@ -38,6 +56,15 @@
     "advanced.nodeEnvironment": "Node.js environment mode",
     "advanced.logLevel": "Logging level for the MCP server",
     "advanced.serverName": "Name for the MCP server in Claude configuration",
-    "advanced.serverVersion": "Version identifier for the MCP server"
+    "advanced.serverVersion": "Version identifier for the MCP server",
+    "features.realtimeSync.enabled": "Enable real-time filesystem watching (default: true)",
+    "features.realtimeSync.autoEnable": "Automatically enable for all indexed codebases (default: false)",
+    "features.realtimeSync.debounceMs": "Debounce time for rapid file changes (default: 500)",
+    "features.performance.connectionPooling": "Use database connection pooling (default: true)",
+    "features.performance.mtimeCache": "Cache file modification times (default: true)",
+    "features.performance.incrementalSync": "Use incremental change detection (default: true)",
+    "features.monitoring.auditLogging": "Log all sync operations (default: true)",
+    "features.monitoring.performanceMetrics": "Collect performance statistics (default: true)",
+    "features.monitoring.healthChecks": "Enable system health diagnostics (default: true)"
   }
 }

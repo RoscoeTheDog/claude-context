@@ -10,12 +10,129 @@ export class ToolHandlers {
     private snapshotManager: SnapshotManager;
     private indexingStats: { indexedFiles: number; totalChunks: number } | null = null;
     private currentWorkspace: string;
+    private lastSyncCache = new Map<string, { timestamp: number; hasChanges: boolean }>();
+    
+    // Phase 5: Audit logging and history tracking
+    private syncHistory = new Map<string, Array<{
+        timestamp: number;
+        operation: string;
+        result: { added: number; modified: number; removed: number };
+        duration: number;
+        trigger: 'manual' | 'realtime' | 'scheduled' | 'pre-search';
+    }>>();
+    private readonly MAX_HISTORY_ENTRIES = 50;
 
     constructor(context: Context, snapshotManager: SnapshotManager) {
         this.context = context;
         this.snapshotManager = snapshotManager;
         this.currentWorkspace = process.cwd();
         console.log(`[WORKSPACE] Current workspace: ${this.currentWorkspace}`);
+        
+        // Set up periodic cache cleanup (every 5 minutes)
+        setInterval(() => {
+            this.clearSyncCache();
+        }, 300000); // 5 minutes
+    }
+
+    /**
+     * Quick sync check with caching to avoid redundant operations
+     * Returns whether the index needs to be updated before search
+     */
+    private async quickSyncCheck(codebasePath: string): Promise<{
+        hasChanges: boolean;
+        changedFiles: string[];
+        syncTime: number;
+        fromCache: boolean;
+    }> {
+        const startTime = Date.now();
+        const now = Date.now();
+        const cacheEntry = this.lastSyncCache.get(codebasePath);
+        
+        // Use cache if less than 2 seconds old to avoid redundant checks
+        if (cacheEntry && (now - cacheEntry.timestamp) < 2000) {
+            return {
+                hasChanges: cacheEntry.hasChanges,
+                changedFiles: [],
+                syncTime: Date.now() - startTime,
+                fromCache: true
+            };
+        }
+
+        const collectionName = this.context.getCollectionName(codebasePath);
+        const synchronizer = this.context.getSynchronizers().get(collectionName);
+
+        if (!synchronizer) {
+            // Cache no-synchronizer result
+            this.lastSyncCache.set(codebasePath, {
+                timestamp: now,
+                hasChanges: false
+            });
+            return { hasChanges: false, changedFiles: [], syncTime: Date.now() - startTime, fromCache: false };
+        }
+
+        try {
+            // Phase 3: Use incremental change detection if available
+            const changes = typeof (synchronizer as any).checkForChangesIncremental === 'function'
+                ? await (synchronizer as any).checkForChangesIncremental()
+                : await synchronizer.checkForChanges();
+            
+            const hasChanges = changes.added.length > 0 || changes.modified.length > 0 || changes.removed.length > 0;
+            const changedFiles = [...changes.added, ...changes.modified, ...changes.removed];
+
+            // Cache the result
+            this.lastSyncCache.set(codebasePath, {
+                timestamp: now,
+                hasChanges
+            });
+
+            return {
+                hasChanges,
+                changedFiles,
+                syncTime: Date.now() - startTime,
+                fromCache: false
+            };
+        } catch (error) {
+            console.warn(`[PRE-SEARCH] Quick sync check failed for ${codebasePath}:`, error);
+            // Cache false to avoid repeated failures
+            this.lastSyncCache.set(codebasePath, {
+                timestamp: now,
+                hasChanges: false
+            });
+            return { hasChanges: false, changedFiles: [], syncTime: Date.now() - startTime, fromCache: false };
+        }
+    }
+
+    /**
+     * Clear sync cache for a specific codebase (called after indexing operations)
+     */
+    private clearSyncCache(codebasePath?: string): void {
+        if (codebasePath) {
+            this.lastSyncCache.delete(codebasePath);
+        } else {
+            // Clear all cache entries older than 5 minutes
+            const cutoff = Date.now() - 300000; // 5 minutes
+            for (const [path, entry] of this.lastSyncCache.entries()) {
+                if (entry.timestamp < cutoff) {
+                    this.lastSyncCache.delete(path);
+                }
+            }
+        }
+    }
+
+    /**
+     * Get sync cache statistics for debugging
+     */
+    public getSyncCacheStats(): { cacheSize: number; entries: Array<{ path: string; timestamp: Date; hasChanges: boolean }> } {
+        const entries = Array.from(this.lastSyncCache.entries()).map(([path, entry]) => ({
+            path,
+            timestamp: new Date(entry.timestamp),
+            hasChanges: entry.hasChanges
+        }));
+        
+        return {
+            cacheSize: this.lastSyncCache.size,
+            entries
+        };
     }
 
     /**
@@ -139,6 +256,41 @@ export class ToolHandlers {
             console.error(`[SYNC-CLOUD] ❌ Error syncing codebases from cloud:`, error.message || error);
             // Don't throw - this is not critical for the main functionality
         }
+    }
+
+    /**
+     * Phase 5: Log sync operation for audit trail
+     */
+    private logSyncOperation(
+        codebasePath: string,
+        operation: string,
+        result: { added: number; modified: number; removed: number },
+        duration: number,
+        trigger: 'manual' | 'realtime' | 'scheduled' | 'pre-search'
+    ): void {
+        const absolutePath = ensureAbsolutePath(codebasePath);
+        
+        if (!this.syncHistory.has(absolutePath)) {
+            this.syncHistory.set(absolutePath, []);
+        }
+        
+        const history = this.syncHistory.get(absolutePath)!;
+        
+        // Add new entry
+        history.push({
+            timestamp: Date.now(),
+            operation,
+            result,
+            duration,
+            trigger
+        });
+        
+        // Maintain history size limit
+        if (history.length > this.MAX_HISTORY_ENTRIES) {
+            history.splice(0, history.length - this.MAX_HISTORY_ENTRIES);
+        }
+        
+        console.log(`[SYNC-AUDIT] ${trigger.toUpperCase()}: ${operation} on ${absolutePath} - ${result.added}A/${result.modified}M/${result.removed}R in ${duration}ms`);
     }
 
     public async handleIndexCodebase(args: any) {
@@ -385,6 +537,9 @@ export class ToolHandlers {
             this.snapshotManager.setCodebaseIndexed(absolutePath, stats);
             this.indexingStats = { indexedFiles: stats.indexedFiles, totalChunks: stats.totalChunks };
 
+            // Clear sync cache after successful indexing to ensure fresh checks
+            this.clearSyncCache(absolutePath);
+
             // Save snapshot after updating codebase lists
             this.snapshotManager.saveCodebaseSnapshot();
 
@@ -459,6 +614,33 @@ export class ToolHandlers {
                     }],
                     isError: true
                 };
+            }
+
+            // NEW: Pre-search sync check to guarantee fresh index (controlled by ENABLE_PRE_SEARCH_SYNC)
+            const preSearchSyncEnabled = process.env.ENABLE_PRE_SEARCH_SYNC !== 'false'; // Default to true
+            if (isIndexed && !isIndexing && preSearchSyncEnabled) {
+                const syncResult = await this.quickSyncCheck(absolutePath);
+                
+                if (syncResult.hasChanges) {
+                    console.log(`[PRE-SEARCH] Detected ${syncResult.changedFiles.length} changed files (${syncResult.fromCache ? 'cached' : 'fresh check'} in ${syncResult.syncTime}ms)`);
+                    console.log(`[PRE-SEARCH] Updating index before search...`);
+                    
+                    try {
+                        const updateStart = Date.now();
+                        await this.context.reindexByChange(absolutePath);
+                        const updateTime = Date.now() - updateStart;
+                        console.log(`[PRE-SEARCH] Index updated successfully in ${updateTime}ms`);
+                        
+                        // Clear cache after successful update
+                        this.lastSyncCache.delete(absolutePath);
+                    } catch (error) {
+                        console.warn(`[PRE-SEARCH] WARNING: Index update failed, continuing with existing index:`, error);
+                    }
+                } else if (!syncResult.fromCache) {
+                    console.log(`[PRE-SEARCH] Index is up-to-date (verified in ${syncResult.syncTime}ms)`);
+                }
+            } else if (!preSearchSyncEnabled) {
+                console.log(`[PRE-SEARCH] Pre-search sync disabled by ENABLE_PRE_SEARCH_SYNC=false`);
             }
 
             // Show indexing status if codebase is being indexed
@@ -792,6 +974,642 @@ export class ToolHandlers {
                 content: [{
                     type: "text",
                     text: `Error getting indexing status: ${error.message || error}`
+                }],
+                isError: true
+            };
+        }
+    }
+
+    /**
+     * Enable real-time filesystem sync for a codebase
+     */
+    public async handleEnableRealtimeSync(args: any) {
+        try {
+            const { path: codebasePath } = args;
+            
+            if (!codebasePath) {
+                return {
+                    content: [{
+                        type: "text",
+                        text: "Error: 'path' parameter is required"
+                    }],
+                    isError: true
+                };
+            }
+
+            const absolutePath = ensureAbsolutePath(codebasePath);
+            
+            if (!fs.existsSync(absolutePath)) {
+                return {
+                    content: [{
+                        type: "text",
+                        text: `Error: Path '${absolutePath}' does not exist`
+                    }],
+                    isError: true
+                };
+            }
+
+            // Check if codebase is indexed first
+            const hasIndex = await this.context.hasIndex(absolutePath);
+            if (!hasIndex) {
+                return {
+                    content: [{
+                        type: "text",
+                        text: `Error: Codebase '${absolutePath}' must be indexed before enabling real-time sync. Please run index_codebase first.`
+                    }],
+                    isError: true
+                };
+            }
+
+            await this.context.enableRealtimeSync(absolutePath);
+            
+            return {
+                content: [{
+                    type: "text",
+                    text: `Real-time filesystem sync enabled for: ${absolutePath}`
+                }]
+            };
+
+        } catch (error: any) {
+            return {
+                content: [{
+                    type: "text",
+                    text: `Error enabling real-time sync: ${error.message || error}`
+                }],
+                isError: true
+            };
+        }
+    }
+
+    /**
+     * Disable real-time filesystem sync for a codebase
+     */
+    public async handleDisableRealtimeSync(args: any) {
+        try {
+            const { path: codebasePath } = args;
+            
+            if (!codebasePath) {
+                return {
+                    content: [{
+                        type: "text",
+                        text: "Error: 'path' parameter is required"
+                    }],
+                    isError: true
+                };
+            }
+
+            const absolutePath = ensureAbsolutePath(codebasePath);
+            
+            await this.context.disableRealtimeSync(absolutePath);
+            
+            return {
+                content: [{
+                    type: "text",
+                    text: `Real-time filesystem sync disabled for: ${absolutePath}`
+                }]
+            };
+
+        } catch (error: any) {
+            return {
+                content: [{
+                    type: "text",
+                    text: `Error disabling real-time sync: ${error.message || error}`
+                }],
+                isError: true
+            };
+        }
+    }
+
+    /**
+     * Get real-time sync status and statistics
+     */
+    public async handleGetRealtimeSyncStatus(args: any) {
+        try {
+            const { path: codebasePath } = args;
+            
+            if (codebasePath) {
+                const absolutePath = ensureAbsolutePath(codebasePath);
+                const isEnabled = this.context.isRealtimeSyncEnabled(absolutePath);
+                
+                return {
+                    content: [{
+                        type: "text",
+                        text: `Real-time sync for '${absolutePath}': ${isEnabled ? 'ENABLED' : 'DISABLED'}`
+                    }]
+                };
+            } else {
+                // Get status for all codebases
+                const stats = this.context.getRealtimeSyncStats();
+                
+                if (stats.length === 0) {
+                    return {
+                        content: [{
+                            type: "text",
+                            text: "No real-time sync watchers are currently active."
+                        }]
+                    };
+                }
+
+                const statusLines = stats.map(stat => 
+                    `${stat.codebasePath}: ${stat.isEnabled ? 'ENABLED' : 'DISABLED'} ` +
+                    `(${stat.pendingOperations} pending, ${stat.watchedPaths.length} watched paths)`
+                );
+
+                return {
+                    content: [{
+                        type: "text",
+                        text: `Real-time sync status:\n${statusLines.join('\n')}`
+                    }]
+                };
+            }
+
+        } catch (error: any) {
+            return {
+                content: [{
+                    type: "text",
+                    text: `Error getting real-time sync status: ${error.message || error}`
+                }],
+                isError: true
+            };
+        }
+    }
+
+    /**
+     * Phase 5: Enhanced sync status with detailed metrics
+     */
+    public async handleGetSyncStatus(args: any) {
+        try {
+            const { path: codebasePath } = args;
+            
+            if (!codebasePath) {
+                return {
+                    content: [{
+                        type: "text",
+                        text: "Error: 'path' parameter is required"
+                    }],
+                    isError: true
+                };
+            }
+
+            const absolutePath = ensureAbsolutePath(codebasePath);
+            
+            // Gather comprehensive status information
+            const hasIndex = await this.context.hasIndex(absolutePath);
+            const isRealtimeEnabled = this.context.isRealtimeSyncEnabled(absolutePath);
+            const collectionName = this.context.getCollectionName(absolutePath);
+            
+            // Get sync cache information
+            const syncCache = this.lastSyncCache.get(absolutePath);
+            const lastSyncTime = syncCache ? new Date(syncCache.timestamp).toLocaleString() : 'Never';
+            
+            // Get real-time sync statistics if enabled
+            let realtimeStats = '';
+            if (isRealtimeEnabled) {
+                const stats = this.context.getRealtimeSyncStats();
+                const currentStats = stats.find(stat => stat.codebasePath === absolutePath);
+                if (currentStats) {
+                    realtimeStats = `\n• Pending operations: ${currentStats.pendingOperations}\n• Watched paths: ${currentStats.watchedPaths.length}`;
+                }
+            }
+
+            // Get file synchronizer stats
+            let synchronizerStats = '';
+            const synchronizer = this.context.getSynchronizers().get(collectionName);
+            if (synchronizer && typeof (synchronizer as any).mtimeCache !== 'undefined') {
+                const mtimeCacheSize = (synchronizer as any).mtimeCache?.size || 0;
+                synchronizerStats = `\n• Cached file mtimes: ${mtimeCacheSize}`;
+            }
+
+            const statusText = `Sync Status for '${absolutePath}':\n` +
+                             `• Index status: ${hasIndex ? 'Ready' : 'Not indexed'}\n` +
+                             `• Real-time sync: ${isRealtimeEnabled ? 'Enabled' : 'Disabled'}\n` +
+                             `• Last sync check: ${lastSyncTime}` +
+                             realtimeStats +
+                             synchronizerStats;
+
+            return {
+                content: [{
+                    type: "text",
+                    text: statusText
+                }]
+            };
+
+        } catch (error: any) {
+            return {
+                content: [{
+                    type: "text",
+                    text: `Error getting sync status: ${error.message || error}`
+                }],
+                isError: true
+            };
+        }
+    }
+
+    /**
+     * Phase 5: Manual sync trigger with detailed reporting
+     */
+    public async handleSyncNow(args: any) {
+        try {
+            const { path: codebasePath } = args;
+            
+            if (!codebasePath) {
+                return {
+                    content: [{
+                        type: "text",
+                        text: "Error: 'path' parameter is required"
+                    }],
+                    isError: true
+                };
+            }
+
+            const absolutePath = ensureAbsolutePath(codebasePath);
+            
+            if (!fs.existsSync(absolutePath)) {
+                return {
+                    content: [{
+                        type: "text",
+                        text: `Error: Path '${absolutePath}' does not exist`
+                    }],
+                    isError: true
+                };
+            }
+
+            // Check if indexed
+            const hasIndex = await this.context.hasIndex(absolutePath);
+            if (!hasIndex) {
+                return {
+                    content: [{
+                        type: "text",
+                        text: `Error: Codebase '${absolutePath}' is not indexed. Please run index_codebase first.`
+                    }],
+                    isError: true
+                };
+            }
+
+            const startTime = Date.now();
+            console.log(`[MANUAL-SYNC] Starting manual sync for ${absolutePath}`);
+            
+            const result = await this.context.reindexByChange(absolutePath);
+            const syncTime = Date.now() - startTime;
+            
+            // Phase 5: Log sync operation for audit trail
+            this.logSyncOperation(absolutePath, 'sync_now', result, syncTime, 'manual');
+            
+            // Clear sync cache to force fresh check next time
+            this.lastSyncCache.delete(absolutePath);
+            
+            const hasChanges = result.added > 0 || result.modified > 0 || result.removed > 0;
+            
+            let statusText = `Manual sync completed in ${syncTime}ms:\n` +
+                           `• Added: ${result.added} files\n` +
+                           `• Modified: ${result.modified} files\n` +
+                           `• Removed: ${result.removed} files`;
+            
+            if (!hasChanges) {
+                statusText += `\n• No changes detected - index is up to date`;
+            }
+
+            return {
+                content: [{
+                    type: "text",
+                    text: statusText
+                }]
+            };
+
+        } catch (error: any) {
+            return {
+                content: [{
+                    type: "text",
+                    text: `Error during manual sync: ${error.message || error}`
+                }],
+                isError: true
+            };
+        }
+    }
+
+    /**
+     * Phase 5: Performance metrics and statistics
+     */
+    public async handleGetPerformanceStats(args: any) {
+        try {
+            const { path: codebasePath } = args;
+
+            if (codebasePath) {
+                // Stats for specific codebase
+                const absolutePath = ensureAbsolutePath(codebasePath);
+                const collectionName = this.context.getCollectionName(absolutePath);
+                const synchronizer = this.context.getSynchronizers().get(collectionName);
+                
+                let stats = `Performance Stats for '${absolutePath}':\n`;
+                
+                if (synchronizer) {
+                    // File synchronizer performance metrics
+                    const mtimeCacheSize = (synchronizer as any).mtimeCache?.size || 0;
+                    const lastFullScan = (synchronizer as any).lastFullScan || 0;
+                    const timeSinceFullScan = lastFullScan ? Date.now() - lastFullScan : 0;
+                    
+                    stats += `\n• FileSynchronizer:\n`;
+                    stats += `  - Cached file mtimes: ${mtimeCacheSize}\n`;
+                    stats += `  - Last full scan: ${lastFullScan ? new Date(lastFullScan).toLocaleString() : 'Never'}\n`;
+                    stats += `  - Time since full scan: ${Math.round(timeSinceFullScan / 1000)}s\n`;
+                }
+
+                // Real-time sync stats
+                const isRealtimeEnabled = this.context.isRealtimeSyncEnabled(absolutePath);
+                if (isRealtimeEnabled) {
+                    const realtimeStats = this.context.getRealtimeSyncStats();
+                    const currentStats = realtimeStats.find(stat => stat.codebasePath === absolutePath);
+                    if (currentStats) {
+                        stats += `\n• Real-time Sync:\n`;
+                        stats += `  - Status: Enabled\n`;
+                        stats += `  - Pending operations: ${currentStats.pendingOperations}\n`;
+                        stats += `  - Watched paths: ${currentStats.watchedPaths.length}\n`;
+                    }
+                }
+
+                // Sync cache stats
+                const syncCache = this.lastSyncCache.get(absolutePath);
+                if (syncCache) {
+                    stats += `\n• Sync Cache:\n`;
+                    stats += `  - Last check: ${new Date(syncCache.timestamp).toLocaleString()}\n`;
+                    stats += `  - Had changes: ${syncCache.hasChanges ? 'Yes' : 'No'}\n`;
+                }
+
+                return {
+                    content: [{
+                        type: "text",
+                        text: stats
+                    }]
+                };
+
+            } else {
+                // Global performance stats
+                const totalCaches = this.lastSyncCache.size;
+                const realtimeStats = this.context.getRealtimeSyncStats();
+                const totalWatchers = realtimeStats.length;
+                const totalSynchronizers = this.context.getSynchronizers().size;
+
+                let globalStats = `Global Performance Statistics:\n\n`;
+                globalStats += `• System Overview:\n`;
+                globalStats += `  - Active synchronizers: ${totalSynchronizers}\n`;
+                globalStats += `  - Real-time watchers: ${totalWatchers}\n`;
+                globalStats += `  - Sync caches: ${totalCaches}\n`;
+
+                if (realtimeStats.length > 0) {
+                    const totalPending = realtimeStats.reduce((sum, stat) => sum + stat.pendingOperations, 0);
+                    const totalWatched = realtimeStats.reduce((sum, stat) => sum + stat.watchedPaths.length, 0);
+                    
+                    globalStats += `\n• Real-time Sync Totals:\n`;
+                    globalStats += `  - Total pending operations: ${totalPending}\n`;
+                    globalStats += `  - Total watched paths: ${totalWatched}\n`;
+                }
+
+                return {
+                    content: [{
+                        type: "text",
+                        text: globalStats
+                    }]
+                };
+            }
+
+        } catch (error: any) {
+            return {
+                content: [{
+                    type: "text",
+                    text: `Error getting performance stats: ${error.message || error}`
+                }],
+                isError: true
+            };
+        }
+    }
+
+    /**
+     * Phase 5: System health check and diagnostics
+     */
+    public async handleHealthCheck(args: any) {
+        try {
+            const { path: codebasePath } = args;
+            const startTime = Date.now();
+            let healthReport = `System Health Check Report:\n`;
+            let issues: string[] = [];
+            let warnings: string[] = [];
+
+            if (codebasePath) {
+                // Health check for specific codebase
+                const absolutePath = ensureAbsolutePath(codebasePath);
+                healthReport += `\nTarget: ${absolutePath}\n`;
+
+                // Check 1: Path exists
+                if (!fs.existsSync(absolutePath)) {
+                    issues.push(`Path does not exist: ${absolutePath}`);
+                } else {
+                    healthReport += `• Path exists: OK\n`;
+                }
+
+                // Check 2: Index status
+                const hasIndex = await this.context.hasIndex(absolutePath);
+                if (!hasIndex) {
+                    warnings.push(`Codebase is not indexed`);
+                } else {
+                    healthReport += `• Index status: OK\n`;
+                }
+
+                // Check 3: Synchronizer status
+                const collectionName = this.context.getCollectionName(absolutePath);
+                const synchronizer = this.context.getSynchronizers().get(collectionName);
+                if (!synchronizer) {
+                    warnings.push(`No synchronizer found`);
+                } else {
+                    healthReport += `• Synchronizer: OK\n`;
+                    
+                    // Check mtime cache health
+                    const mtimeCacheSize = (synchronizer as any).mtimeCache?.size || 0;
+                    if (mtimeCacheSize === 0) {
+                        warnings.push(`Mtime cache is empty (may impact performance)`);
+                    } else {
+                        healthReport += `• Mtime cache: OK (${mtimeCacheSize} entries)\n`;
+                    }
+                }
+
+                // Check 4: Real-time sync status
+                const isRealtimeEnabled = this.context.isRealtimeSyncEnabled(absolutePath);
+                if (isRealtimeEnabled) {
+                    healthReport += `• Real-time sync: Enabled\n`;
+                    
+                    const stats = this.context.getRealtimeSyncStats();
+                    const currentStats = stats.find(stat => stat.codebasePath === absolutePath);
+                    if (currentStats && currentStats.pendingOperations > 10) {
+                        warnings.push(`High number of pending operations (${currentStats.pendingOperations})`);
+                    }
+                } else {
+                    healthReport += `• Real-time sync: Disabled\n`;
+                }
+
+            } else {
+                // Global system health check
+                healthReport += `\nGlobal System Status:\n`;
+
+                // Check memory usage and performance
+                const totalSynchronizers = this.context.getSynchronizers().size;
+                const totalCaches = this.lastSyncCache.size;
+                const realtimeStats = this.context.getRealtimeSyncStats();
+                
+                healthReport += `• Active synchronizers: ${totalSynchronizers}\n`;
+                healthReport += `• Sync caches: ${totalCaches}\n`;
+                healthReport += `• Real-time watchers: ${realtimeStats.length}\n`;
+
+                // Check for resource issues
+                if (totalCaches > 50) {
+                    warnings.push(`High number of sync caches (${totalCaches}) - consider cleanup`);
+                }
+
+                const totalPending = realtimeStats.reduce((sum, stat) => sum + stat.pendingOperations, 0);
+                if (totalPending > 20) {
+                    warnings.push(`High total pending operations (${totalPending})`);
+                }
+            }
+
+            // Summary
+            const checkTime = Date.now() - startTime;
+            healthReport += `\nHealth Check Summary:\n`;
+            healthReport += `• Check completed in: ${checkTime}ms\n`;
+            healthReport += `• Issues found: ${issues.length}\n`;
+            healthReport += `• Warnings: ${warnings.length}\n`;
+
+            if (issues.length > 0) {
+                healthReport += `\nISSUES:\n${issues.map(issue => `  - ${issue}`).join('\n')}\n`;
+            }
+
+            if (warnings.length > 0) {
+                healthReport += `\nWARNINGS:\n${warnings.map(warning => `  - ${warning}`).join('\n')}\n`;
+            }
+
+            if (issues.length === 0 && warnings.length === 0) {
+                healthReport += `\nAll systems operational!`;
+            }
+
+            return {
+                content: [{
+                    type: "text",
+                    text: healthReport
+                }]
+            };
+
+        } catch (error: any) {
+            return {
+                content: [{
+                    type: "text",
+                    text: `Error during health check: ${error.message || error}`
+                }],
+                isError: true
+            };
+        }
+    }
+
+    /**
+     * Phase 5: Get sync history and audit trail
+     */
+    public async handleGetSyncHistory(args: any) {
+        try {
+            const { path: codebasePath, limit = 10 } = args;
+            
+            if (!codebasePath) {
+                // Get global sync history summary
+                const allPaths = Array.from(this.syncHistory.keys());
+                let globalSummary = `Sync History Summary:\n\n`;
+                
+                if (allPaths.length === 0) {
+                    globalSummary += `No sync operations recorded.`;
+                } else {
+                    globalSummary += `Active codebases: ${allPaths.length}\n`;
+                    
+                    let totalOperations = 0;
+                    for (const path of allPaths) {
+                        const history = this.syncHistory.get(path) || [];
+                        totalOperations += history.length;
+                    }
+                    globalSummary += `Total operations: ${totalOperations}\n`;
+                    globalSummary += `\nRecent activity:\n`;
+                    
+                    // Show recent operations across all codebases
+                    const allOperations: Array<{ path: string; entry: any }> = [];
+                    for (const path of allPaths) {
+                        const history = this.syncHistory.get(path) || [];
+                        history.forEach(entry => {
+                            allOperations.push({ path, entry });
+                        });
+                    }
+                    
+                    allOperations
+                        .sort((a, b) => b.entry.timestamp - a.entry.timestamp)
+                        .slice(0, Math.min(limit, 10))
+                        .forEach(({ path, entry }) => {
+                            const date = new Date(entry.timestamp).toLocaleString();
+                            const pathShort = path.length > 50 ? '...' + path.slice(-47) : path;
+                            globalSummary += `  • ${date} - ${entry.trigger}: ${pathShort} (${entry.result.added}A/${entry.result.modified}M/${entry.result.removed}R)\n`;
+                        });
+                }
+
+                return {
+                    content: [{
+                        type: "text",
+                        text: globalSummary
+                    }]
+                };
+            }
+
+            const absolutePath = ensureAbsolutePath(codebasePath);
+            const history = this.syncHistory.get(absolutePath) || [];
+            
+            if (history.length === 0) {
+                return {
+                    content: [{
+                        type: "text",
+                        text: `No sync history found for '${absolutePath}'`
+                    }]
+                };
+            }
+
+            const recentHistory = history
+                .slice(-Math.min(limit, this.MAX_HISTORY_ENTRIES))
+                .reverse(); // Show most recent first
+
+            let historyText = `Sync History for '${absolutePath}' (${recentHistory.length} entries):\n\n`;
+            
+            recentHistory.forEach((entry, index) => {
+                const date = new Date(entry.timestamp).toLocaleString();
+                const trigger = entry.trigger.toUpperCase().padEnd(10);
+                const duration = `${entry.duration}ms`.padStart(6);
+                const changes = `${entry.result.added}A/${entry.result.modified}M/${entry.result.removed}R`;
+                
+                historyText += `${(index + 1).toString().padStart(2)}. ${date} | ${trigger} | ${duration} | ${changes} | ${entry.operation}\n`;
+            });
+
+            // Add summary stats
+            const totalOps = history.length;
+            const avgDuration = Math.round(history.reduce((sum, entry) => sum + entry.duration, 0) / totalOps);
+            const triggers = history.reduce((acc: Record<string, number>, entry) => {
+                acc[entry.trigger] = (acc[entry.trigger] || 0) + 1;
+                return acc;
+            }, {});
+
+            historyText += `\nSummary:\n`;
+            historyText += `• Total operations: ${totalOps}\n`;
+            historyText += `• Average duration: ${avgDuration}ms\n`;
+            historyText += `• By trigger: ${Object.entries(triggers).map(([k, v]) => `${k}:${v}`).join(', ')}\n`;
+
+            return {
+                content: [{
+                    type: "text",
+                    text: historyText
+                }]
+            };
+
+        } catch (error: any) {
+            return {
+                content: [{
+                    type: "text",
+                    text: `Error getting sync history: ${error.message || error}`
                 }],
                 isError: true
             };

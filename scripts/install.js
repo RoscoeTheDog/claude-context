@@ -253,6 +253,30 @@ class ClaudeContextInstaller {
             env.MILVUS_ADDRESS = this.config.milvusAddress;
         }
 
+        // Add enhanced features configuration
+        if (this.config.features) {
+            // Real-time sync settings
+            if (this.config.features.realtimeSync) {
+                env.REALTIME_SYNC_ENABLED = this.config.features.realtimeSync.enabled ? 'true' : 'false';
+                env.REALTIME_SYNC_AUTO_ENABLE = this.config.features.realtimeSync.autoEnable ? 'true' : 'false';
+                env.REALTIME_SYNC_DEBOUNCE_MS = this.config.features.realtimeSync.debounceMs.toString();
+            }
+
+            // Performance settings
+            if (this.config.features.performance) {
+                env.CONNECTION_POOLING = this.config.features.performance.connectionPooling ? 'true' : 'false';
+                env.MTIME_CACHE = this.config.features.performance.mtimeCache ? 'true' : 'false';
+                env.INCREMENTAL_SYNC = this.config.features.performance.incrementalSync ? 'true' : 'false';
+            }
+
+            // Monitoring settings
+            if (this.config.features.monitoring) {
+                env.AUDIT_LOGGING = this.config.features.monitoring.auditLogging ? 'true' : 'false';
+                env.PERFORMANCE_METRICS = this.config.features.monitoring.performanceMetrics ? 'true' : 'false';
+                env.HEALTH_CHECKS = this.config.features.monitoring.healthChecks ? 'true' : 'false';
+            }
+        }
+
         const claudeConfig = {
             mcpServers: {
                 "claude-context": {
@@ -323,6 +347,30 @@ class ClaudeContextInstaller {
                 command += ` -e MILVUS_ADDRESS=${this.config.milvusAddress}`;
             }
 
+            // Add enhanced features configuration
+            if (this.config.features) {
+                // Real-time sync settings
+                if (this.config.features.realtimeSync) {
+                    command += ` -e REALTIME_SYNC_ENABLED=${this.config.features.realtimeSync.enabled ? 'true' : 'false'}`;
+                    command += ` -e REALTIME_SYNC_AUTO_ENABLE=${this.config.features.realtimeSync.autoEnable ? 'true' : 'false'}`;
+                    command += ` -e REALTIME_SYNC_DEBOUNCE_MS=${this.config.features.realtimeSync.debounceMs}`;
+                }
+
+                // Performance settings
+                if (this.config.features.performance) {
+                    command += ` -e CONNECTION_POOLING=${this.config.features.performance.connectionPooling ? 'true' : 'false'}`;
+                    command += ` -e MTIME_CACHE=${this.config.features.performance.mtimeCache ? 'true' : 'false'}`;
+                    command += ` -e INCREMENTAL_SYNC=${this.config.features.performance.incrementalSync ? 'true' : 'false'}`;
+                }
+
+                // Monitoring settings
+                if (this.config.features.monitoring) {
+                    command += ` -e AUDIT_LOGGING=${this.config.features.monitoring.auditLogging ? 'true' : 'false'}`;
+                    command += ` -e PERFORMANCE_METRICS=${this.config.features.monitoring.performanceMetrics ? 'true' : 'false'}`;
+                    command += ` -e HEALTH_CHECKS=${this.config.features.monitoring.healthChecks ? 'true' : 'false'}`;
+                }
+            }
+
             // Execute the command to add MCP server to Claude Code CLI
             this.log('Adding MCP server to Claude Code CLI with user scope...');
             execSync(command, { 
@@ -355,14 +403,14 @@ class ClaudeContextInstaller {
             if (this.config.embeddingProvider) env.EMBEDDING_PROVIDER = this.config.embeddingProvider;
 
             // Test server startup with --help flag
-            const result = execSync(`node "${mcpServerPath}" --help`, {
+            const result = execSync(`node "${mcpServerPath}" --help 2>&1`, {
                 env,
                 encoding: 'utf8',
                 timeout: 10000,
                 stdio: 'pipe'
             });
 
-            if (result.includes('Context MCP Server')) {
+            if (result.includes('Context MCP Server') || result.includes('Usage: npx @zilliz/claude-context-mcp')) {
                 this.success('MCP server test completed successfully');
             } else {
                 throw new Error('Unexpected server response');

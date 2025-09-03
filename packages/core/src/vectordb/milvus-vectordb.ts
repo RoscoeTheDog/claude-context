@@ -24,12 +24,117 @@ export class MilvusVectorDatabase implements VectorDatabase {
     protected config: MilvusConfig;
     private client: MilvusClient | null = null;
     protected initializationPromise: Promise<void>;
+    
+    // Phase 4: Connection pooling and performance optimization
+    private static instancePool: Map<string, { 
+        client: MilvusClient; 
+        refCount: number; 
+        lastUsed: number;
+        config: MilvusConfig;
+    }> = new Map();
+    private static poolCleanupInterval?: NodeJS.Timeout;
+    private static readonly POOL_CLEANUP_INTERVAL = 300000; // 5 minutes
+    private static readonly MAX_IDLE_TIME = 600000; // 10 minutes
+    private instanceKey: string;
 
     constructor(config: MilvusConfig) {
         this.config = config;
+        this.instanceKey = this.generateInstanceKey(config);
 
         // Start initialization asynchronously without waiting
         this.initializationPromise = this.initialize();
+        
+        // Initialize pool cleanup if not already done
+        this.initializePoolCleanup();
+    }
+
+    /**
+     * Phase 4: Generate unique key for connection pooling
+     */
+    private generateInstanceKey(config: MilvusConfig): string {
+        const key = `${config.address || 'default'}_${config.username || 'default'}_${config.token ? 'token' : 'notoken'}`;
+        return Buffer.from(key).toString('base64');
+    }
+
+    /**
+     * Phase 4: Initialize connection pool cleanup
+     */
+    private initializePoolCleanup(): void {
+        if (!MilvusVectorDatabase.poolCleanupInterval) {
+            MilvusVectorDatabase.poolCleanupInterval = setInterval(() => {
+                this.cleanupConnectionPool();
+            }, MilvusVectorDatabase.POOL_CLEANUP_INTERVAL);
+        }
+    }
+
+    /**
+     * Phase 4: Cleanup idle connections from pool
+     */
+    private cleanupConnectionPool(): void {
+        const now = Date.now();
+        const keysToDelete: string[] = [];
+
+        for (const [key, poolEntry] of MilvusVectorDatabase.instancePool.entries()) {
+            const idleTime = now - poolEntry.lastUsed;
+            
+            if (poolEntry.refCount === 0 && idleTime > MilvusVectorDatabase.MAX_IDLE_TIME) {
+                console.log(`[MilvusDB] Cleaning up idle connection: ${key} (idle for ${Math.round(idleTime/1000)}s)`);
+                keysToDelete.push(key);
+            }
+        }
+
+        keysToDelete.forEach(key => {
+            MilvusVectorDatabase.instancePool.delete(key);
+        });
+
+        if (keysToDelete.length > 0) {
+            console.log(`[MilvusDB] Pool cleanup: removed ${keysToDelete.length} idle connections, ${MilvusVectorDatabase.instancePool.size} remaining`);
+        }
+    }
+
+    /**
+     * Phase 4: Get or create pooled client
+     */
+    private async getPooledClient(address: string): Promise<MilvusClient> {
+        const poolEntry = MilvusVectorDatabase.instancePool.get(this.instanceKey);
+        
+        if (poolEntry) {
+            poolEntry.refCount++;
+            poolEntry.lastUsed = Date.now();
+            console.log(`[MilvusDB] Reusing pooled connection: ${this.instanceKey} (refs: ${poolEntry.refCount})`);
+            return poolEntry.client;
+        }
+
+        // Create new client
+        console.log(`[MilvusDB] Creating new pooled connection: ${this.instanceKey}`);
+        const client = new MilvusClient({
+            address: address,
+            username: this.config.username,
+            password: this.config.password,
+            token: this.config.token,
+            ssl: this.config.ssl || false,
+        });
+
+        MilvusVectorDatabase.instancePool.set(this.instanceKey, {
+            client,
+            refCount: 1,
+            lastUsed: Date.now(),
+            config: this.config
+        });
+
+        console.log(`[MilvusDB] Pool stats: ${MilvusVectorDatabase.instancePool.size} connections`);
+        return client;
+    }
+
+    /**
+     * Phase 4: Release pooled client reference
+     */
+    private releasePooledClient(): void {
+        const poolEntry = MilvusVectorDatabase.instancePool.get(this.instanceKey);
+        if (poolEntry && poolEntry.refCount > 0) {
+            poolEntry.refCount--;
+            poolEntry.lastUsed = Date.now();
+        }
     }
 
     private async initialize(): Promise<void> {
@@ -38,15 +143,8 @@ export class MilvusVectorDatabase implements VectorDatabase {
     }
 
     private async initializeClient(address: string): Promise<void> {
-        const milvusConfig = this.config as MilvusConfig;
         console.log('🔌 Connecting to vector database at: ', address);
-        this.client = new MilvusClient({
-            address: address,
-            username: milvusConfig.username,
-            password: milvusConfig.password,
-            token: milvusConfig.token,
-            ssl: milvusConfig.ssl || false,
-        });
+        this.client = await this.getPooledClient(address);
     }
 
     /**
@@ -423,6 +521,111 @@ export class MilvusVectorDatabase implements VectorDatabase {
         });
     }
 
+    /**
+     * Phase 4: Optimized bulk deletion with batching and retry
+     * Handles large deletion operations efficiently
+     */
+    async bulkDelete(
+        collectionName: string, 
+        ids: string[], 
+        batchSize: number = 1000,
+        maxRetries: number = 3
+    ): Promise<{ deletedCount: number; failedIds: string[] }> {
+        await this.ensureInitialized();
+        await this.ensureLoaded(collectionName);
+
+        if (!this.client) {
+            throw new Error('MilvusClient is not initialized');
+        }
+
+        if (ids.length === 0) {
+            return { deletedCount: 0, failedIds: [] };
+        }
+
+        console.log(`[MilvusDB] Starting bulk delete: ${ids.length} documents in batches of ${batchSize}`);
+        
+        let deletedCount = 0;
+        const failedIds: string[] = [];
+
+        // Process deletions in batches
+        for (let i = 0; i < ids.length; i += batchSize) {
+            const batch = ids.slice(i, i + batchSize);
+            const batchNum = Math.floor(i / batchSize) + 1;
+            const totalBatches = Math.ceil(ids.length / batchSize);
+            
+            console.log(`[MilvusDB] Deleting batch ${batchNum}/${totalBatches}: ${batch.length} documents`);
+
+            let attempt = 0;
+            while (attempt < maxRetries) {
+                try {
+                    await this.client.delete({
+                        collection_name: collectionName,
+                        filter: `id in [${batch.map(id => `"${id}"`).join(', ')}]`,
+                    });
+                    
+                    deletedCount += batch.length;
+                    console.log(`[MilvusDB] ✅ Batch ${batchNum} deleted successfully`);
+                    break; // Success, move to next batch
+
+                } catch (error: any) {
+                    attempt++;
+                    console.error(`[MilvusDB] ❌ Batch ${batchNum} deletion failed (attempt ${attempt}/${maxRetries}):`, error);
+
+                    if (attempt >= maxRetries) {
+                        console.error(`[MilvusDB] 💥 Batch ${batchNum} failed after ${maxRetries} attempts, adding to failed list`);
+                        failedIds.push(...batch);
+                        break;
+                    }
+
+                    // Exponential backoff
+                    const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+                    console.log(`[MilvusDB] ⏳ Retrying batch ${batchNum} in ${delay}ms...`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                }
+            }
+
+            // Brief pause between batches to prevent overload
+            if (i + batchSize < ids.length) {
+                await new Promise(resolve => setTimeout(resolve, 50));
+            }
+        }
+
+        console.log(`[MilvusDB] ✅ Bulk delete completed: ${deletedCount}/${ids.length} deleted, ${failedIds.length} failed`);
+        return { deletedCount, failedIds };
+    }
+
+    /**
+     * Phase 4: Enhanced retry wrapper for all vector operations
+     * Provides consistent retry logic with exponential backoff
+     */
+    private async withRetry<T>(
+        operation: () => Promise<T>,
+        operationName: string,
+        maxRetries: number = 3,
+        baseDelay: number = 1000
+    ): Promise<T> {
+        let attempt = 0;
+        
+        while (attempt < maxRetries) {
+            try {
+                return await operation();
+            } catch (error: any) {
+                attempt++;
+                console.error(`[MilvusDB] ${operationName} failed (attempt ${attempt}/${maxRetries}):`, error);
+
+                if (attempt >= maxRetries) {
+                    throw new Error(`${operationName} failed after ${maxRetries} attempts: ${error.message}`);
+                }
+
+                const delay = Math.min(baseDelay * Math.pow(2, attempt - 1), 10000);
+                console.log(`[MilvusDB] ⏳ Retrying ${operationName} in ${delay}ms...`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+            }
+        }
+        
+        throw new Error(`Unexpected error in withRetry for ${operationName}`);
+    }
+
     async query(collectionName: string, filter: string, outputFields: string[], limit?: number): Promise<Record<string, any>[]> {
         await this.ensureInitialized();
         await this.ensureLoaded(collectionName);
@@ -583,6 +786,165 @@ export class MilvusVectorDatabase implements VectorDatabase {
         await this.client.describeCollection({
             collection_name: collectionName,
         });
+    }
+
+    /**
+     * Phase 4: Atomic file update with conflict resolution
+     * Handles file updates as atomic operations with rollback capability
+     */
+    async atomicFileUpdate(
+        collectionName: string, 
+        relativePath: string, 
+        newChunks: VectorDocument[],
+        maxRetries: number = 3
+    ): Promise<{ success: boolean; chunksProcessed: number; error?: string }> {
+        await this.ensureInitialized();
+        await this.ensureLoaded(collectionName);
+
+        if (!this.client) {
+            throw new Error('MilvusClient is not initialized');
+        }
+
+        let attempt = 0;
+        let backupChunks: Record<string, any>[] = [];
+
+        while (attempt < maxRetries) {
+            try {
+                console.log(`[MilvusDB] Starting atomic file update: ${relativePath} (attempt ${attempt + 1}/${maxRetries})`);
+
+                // Step 1: Query existing chunks for backup
+                const escapedPath = relativePath.replace(/\\/g, '\\\\');
+                backupChunks = await this.query(
+                    collectionName,
+                    `relativePath == "${escapedPath}"`,
+                    ['id', 'vector', 'content', 'relativePath', 'startLine', 'endLine', 'fileExtension']
+                );
+
+                // Step 2: Delete existing chunks
+                if (backupChunks.length > 0) {
+                    const existingIds = backupChunks.map(chunk => chunk.id as string).filter(id => id);
+                    if (existingIds.length > 0) {
+                        await this.delete(collectionName, existingIds);
+                        console.log(`[MilvusDB] Deleted ${existingIds.length} existing chunks for ${relativePath}`);
+                    }
+                }
+
+                // Step 3: Insert new chunks (if any)
+                if (newChunks.length > 0) {
+                    await this.insertHybrid(collectionName, newChunks);
+                    console.log(`[MilvusDB] Inserted ${newChunks.length} new chunks for ${relativePath}`);
+                }
+
+                console.log(`[MilvusDB] ✅ Atomic update completed: ${relativePath} (${newChunks.length} chunks)`);
+                return { success: true, chunksProcessed: newChunks.length };
+
+            } catch (error: any) {
+                attempt++;
+                console.error(`[MilvusDB] ❌ Atomic update failed (attempt ${attempt}/${maxRetries}) for ${relativePath}:`, error);
+
+                // Attempt rollback if we have backup chunks and it's not the last attempt
+                if (backupChunks.length > 0 && attempt < maxRetries) {
+                    try {
+                        console.log(`[MilvusDB] 🔄 Attempting rollback for ${relativePath}...`);
+                        
+                        // Convert backup chunks back to VectorDocument format
+                        const rollbackDocs: VectorDocument[] = backupChunks.map(chunk => ({
+                            id: chunk.id,
+                            vector: chunk.vector,
+                            content: chunk.content,
+                            relativePath: chunk.relativePath,
+                            startLine: chunk.startLine,
+                            endLine: chunk.endLine,
+                            fileExtension: chunk.fileExtension || '',
+                            metadata: {}
+                        }));
+                        
+                        await this.insertHybrid(collectionName, rollbackDocs);
+                        console.log(`[MilvusDB] ✅ Rollback completed for ${relativePath}`);
+                    } catch (rollbackError) {
+                        console.error(`[MilvusDB] ❌ Rollback failed for ${relativePath}:`, rollbackError);
+                        // Continue with retry, don't abort
+                    }
+                }
+
+                if (attempt >= maxRetries) {
+                    return { 
+                        success: false, 
+                        chunksProcessed: 0, 
+                        error: `Failed after ${maxRetries} attempts: ${error.message}` 
+                    };
+                }
+
+                // Exponential backoff before retry
+                const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+                console.log(`[MilvusDB] ⏳ Retrying atomic update in ${delay}ms...`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+            }
+        }
+
+        return { success: false, chunksProcessed: 0, error: 'Max retries exceeded' };
+    }
+
+    /**
+     * Phase 4: Batch file updates for multiple files
+     * Processes multiple files in optimized batches
+     */
+    async batchFileUpdates(
+        collectionName: string,
+        fileUpdates: Array<{ relativePath: string; chunks: VectorDocument[] }>,
+        batchSize: number = 5
+    ): Promise<{ 
+        successful: number; 
+        failed: Array<{ relativePath: string; error: string }>; 
+        totalChunks: number 
+    }> {
+        console.log(`[MilvusDB] Starting batch file updates: ${fileUpdates.length} files`);
+        
+        let successful = 0;
+        let totalChunks = 0;
+        const failed: Array<{ relativePath: string; error: string }> = [];
+
+        // Process in batches to avoid overwhelming the database
+        for (let i = 0; i < fileUpdates.length; i += batchSize) {
+            const batch = fileUpdates.slice(i, i + batchSize);
+            console.log(`[MilvusDB] Processing batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(fileUpdates.length/batchSize)}`);
+
+            // Process batch concurrently
+            const batchPromises = batch.map(async (update) => {
+                try {
+                    const result = await this.atomicFileUpdate(
+                        collectionName,
+                        update.relativePath,
+                        update.chunks
+                    );
+                    
+                    if (result.success) {
+                        successful++;
+                        totalChunks += result.chunksProcessed;
+                    } else {
+                        failed.push({ 
+                            relativePath: update.relativePath, 
+                            error: result.error || 'Unknown error' 
+                        });
+                    }
+                } catch (error: any) {
+                    failed.push({ 
+                        relativePath: update.relativePath, 
+                        error: error.message 
+                    });
+                }
+            });
+
+            await Promise.all(batchPromises);
+
+            // Brief pause between batches to prevent overload
+            if (i + batchSize < fileUpdates.length) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+        }
+
+        console.log(`[MilvusDB] ✅ Batch updates completed: ${successful}/${fileUpdates.length} successful, ${totalChunks} total chunks`);
+        return { successful, failed, totalChunks };
     }
 
     async insertHybrid(collectionName: string, documents: VectorDocument[]): Promise<void> {

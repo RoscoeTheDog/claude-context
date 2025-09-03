@@ -22,6 +22,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
 import { FileSynchronizer } from './sync/synchronizer';
+import { FileSystemWatcher } from './sync/file-watcher';
 
 const DEFAULT_SUPPORTED_EXTENSIONS = [
     // Programming languages
@@ -103,6 +104,7 @@ export class Context {
     private supportedExtensions: string[];
     private ignorePatterns: string[];
     private synchronizers = new Map<string, FileSynchronizer>();
+    private fileWatchers = new Map<string, FileSystemWatcher>();
 
     constructor(config: ContextConfig = {}) {
         // Initialize services
@@ -201,6 +203,74 @@ export class Context {
      */
     setSynchronizer(collectionName: string, synchronizer: FileSynchronizer): void {
         this.synchronizers.set(collectionName, synchronizer);
+    }
+
+    /**
+     * Enable real-time filesystem sync for a codebase
+     */
+    async enableRealtimeSync(codebasePath: string): Promise<void> {
+        const collectionName = this.getCollectionName(codebasePath);
+        
+        if (this.fileWatchers.has(collectionName)) {
+            console.log(`[Context] Real-time sync already enabled for ${codebasePath}`);
+            return;
+        }
+
+        try {
+            const watcher = new FileSystemWatcher(codebasePath, this);
+            await watcher.enable();
+            this.fileWatchers.set(collectionName, watcher);
+            console.log(`[Context] Enabled real-time sync for ${codebasePath}`);
+        } catch (error) {
+            console.error(`[Context] Failed to enable real-time sync for ${codebasePath}:`, error);
+            throw error;
+        }
+    }
+
+    /**
+     * Disable real-time filesystem sync for a codebase
+     */
+    async disableRealtimeSync(codebasePath: string): Promise<void> {
+        const collectionName = this.getCollectionName(codebasePath);
+        const watcher = this.fileWatchers.get(collectionName);
+        
+        if (watcher) {
+            try {
+                await watcher.disable();
+                this.fileWatchers.delete(collectionName);
+                console.log(`[Context] Disabled real-time sync for ${codebasePath}`);
+            } catch (error) {
+                console.error(`[Context] Failed to disable real-time sync for ${codebasePath}:`, error);
+                throw error;
+            }
+        } else {
+            console.log(`[Context] Real-time sync was not enabled for ${codebasePath}`);
+        }
+    }
+
+    /**
+     * Check if real-time sync is enabled for a codebase
+     */
+    isRealtimeSyncEnabled(codebasePath: string): boolean {
+        const collectionName = this.getCollectionName(codebasePath);
+        const watcher = this.fileWatchers.get(collectionName);
+        return watcher ? watcher.isWatcherEnabled() : false;
+    }
+
+    /**
+     * Get real-time sync statistics for all watched codebases
+     */
+    getRealtimeSyncStats(): Array<{
+        codebasePath: string;
+        isEnabled: boolean;
+        pendingOperations: number;
+        watchedPaths: string[];
+    }> {
+        const stats = [];
+        for (const [collectionName, watcher] of this.fileWatchers.entries()) {
+            stats.push(watcher.getStats());
+        }
+        return stats;
     }
 
     /**
@@ -393,9 +463,96 @@ export class Context {
         if (results.length > 0) {
             const ids = results.map(r => r.id as string).filter(id => id);
             if (ids.length > 0) {
-                await this.vectorDatabase.delete(collectionName, ids);
-                console.log(`[Context] Deleted ${ids.length} chunks for file ${relativePath}`);
+                // Phase 4: Use bulk delete if available
+                if (typeof (this.vectorDatabase as any).bulkDelete === 'function') {
+                    const result = await (this.vectorDatabase as any).bulkDelete(collectionName, ids);
+                    console.log(`[Context] Bulk deleted ${result.deletedCount}/${ids.length} chunks for file ${relativePath}`);
+                    if (result.failedIds.length > 0) {
+                        console.warn(`[Context] Failed to delete ${result.failedIds.length} chunks for ${relativePath}`);
+                    }
+                } else {
+                    await this.vectorDatabase.delete(collectionName, ids);
+                    console.log(`[Context] Deleted ${ids.length} chunks for file ${relativePath}`);
+                }
             }
+        }
+    }
+
+    /**
+     * Phase 4: Atomic file update using vector database optimizations
+     * Updates a single file's chunks atomically with rollback capability
+     */
+    private async atomicFileUpdate(
+        collectionName: string, 
+        relativePath: string, 
+        newChunks: VectorDocument[]
+    ): Promise<boolean> {
+        // Use atomic update if available
+        if (typeof (this.vectorDatabase as any).atomicFileUpdate === 'function') {
+            const result = await (this.vectorDatabase as any).atomicFileUpdate(
+                collectionName, 
+                relativePath, 
+                newChunks
+            );
+            
+            if (result.success) {
+                console.log(`[Context] Atomic update completed: ${relativePath} (${result.chunksProcessed} chunks)`);
+                return true;
+            } else {
+                console.error(`[Context] Atomic update failed: ${relativePath} - ${result.error}`);
+                return false;
+            }
+        } else {
+            // Fallback to traditional method
+            await this.deleteFileChunks(collectionName, relativePath);
+            if (newChunks.length > 0) {
+                await this.vectorDatabase.insertHybrid(collectionName, newChunks);
+            }
+            return true;
+        }
+    }
+
+    /**
+     * Phase 4: Batch update multiple files efficiently
+     */
+    private async batchFileUpdates(
+        collectionName: string,
+        fileUpdates: Array<{ relativePath: string; chunks: VectorDocument[] }>
+    ): Promise<{ successful: number; failed: number }> {
+        // Use batch updates if available
+        if (typeof (this.vectorDatabase as any).batchFileUpdates === 'function') {
+            const result = await (this.vectorDatabase as any).batchFileUpdates(
+                collectionName, 
+                fileUpdates
+            );
+            
+            console.log(`[Context] Batch updates: ${result.successful}/${fileUpdates.length} files, ${result.totalChunks} chunks`);
+            if (result.failed.length > 0) {
+                console.warn(`[Context] Failed batch updates:`, result.failed.map((f: { relativePath: string; error: string }) => f.relativePath));
+            }
+            
+            return { successful: result.successful, failed: result.failed.length };
+        } else {
+            // Fallback to individual updates
+            let successful = 0;
+            let failed = 0;
+            
+            for (const update of fileUpdates) {
+                try {
+                    const success = await this.atomicFileUpdate(
+                        collectionName, 
+                        update.relativePath, 
+                        update.chunks
+                    );
+                    if (success) successful++;
+                    else failed++;
+                } catch (error) {
+                    console.error(`[Context] File update failed: ${update.relativePath}`, error);
+                    failed++;
+                }
+            }
+            
+            return { successful, failed };
         }
     }
 

@@ -221,6 +221,124 @@ This tool is versatile and can be used before completing various tasks to retrie
                             required: ["path"]
                         }
                     },
+                    {
+                        name: "enable_realtime_sync",
+                        description: `Enable real-time filesystem sync for an indexed codebase. This will automatically update the search index when files are added, changed, or deleted.`,
+                        inputSchema: {
+                            type: "object",
+                            properties: {
+                                path: {
+                                    type: "string",
+                                    description: `ABSOLUTE path to the codebase directory to enable real-time sync for.`
+                                }
+                            },
+                            required: ["path"]
+                        }
+                    },
+                    {
+                        name: "disable_realtime_sync",
+                        description: `Disable real-time filesystem sync for a codebase.`,
+                        inputSchema: {
+                            type: "object",
+                            properties: {
+                                path: {
+                                    type: "string",
+                                    description: `ABSOLUTE path to the codebase directory to disable real-time sync for.`
+                                }
+                            },
+                            required: ["path"]
+                        }
+                    },
+                    {
+                        name: "get_realtime_sync_status",
+                        description: `Get the status of real-time filesystem sync for a specific codebase or all codebases.`,
+                        inputSchema: {
+                            type: "object",
+                            properties: {
+                                path: {
+                                    type: "string",
+                                    description: `Optional: ABSOLUTE path to the codebase directory to check status for. If not provided, shows status for all codebases.`
+                                }
+                            },
+                            required: []
+                        }
+                    },
+                    {
+                        name: "get_sync_status",
+                        description: `Get detailed sync status and metrics for a codebase, including real-time sync state, performance statistics, and cache information.`,
+                        inputSchema: {
+                            type: "object",
+                            properties: {
+                                path: {
+                                    type: "string",
+                                    description: `ABSOLUTE path to the codebase directory to check sync status for.`
+                                }
+                            },
+                            required: ["path"]
+                        }
+                    },
+                    {
+                        name: "sync_now",
+                        description: `Manually trigger an immediate sync for a codebase, bypassing normal sync intervals. Reports detailed results of the sync operation.`,
+                        inputSchema: {
+                            type: "object",
+                            properties: {
+                                path: {
+                                    type: "string",
+                                    description: `ABSOLUTE path to the codebase directory to sync immediately.`
+                                }
+                            },
+                            required: ["path"]
+                        }
+                    },
+                    {
+                        name: "get_performance_stats",
+                        description: `Get detailed performance statistics and metrics for sync operations, including cache usage, timing information, and resource utilization.`,
+                        inputSchema: {
+                            type: "object",
+                            properties: {
+                                path: {
+                                    type: "string",
+                                    description: `Optional: ABSOLUTE path to get stats for a specific codebase. If not provided, shows global statistics.`
+                                }
+                            },
+                            required: []
+                        }
+                    },
+                    {
+                        name: "health_check",
+                        description: `Perform comprehensive system health check and diagnostics, identifying potential issues, warnings, and system status.`,
+                        inputSchema: {
+                            type: "object",
+                            properties: {
+                                path: {
+                                    type: "string",
+                                    description: `Optional: ABSOLUTE path to check health for a specific codebase. If not provided, performs global health check.`
+                                }
+                            },
+                            required: []
+                        }
+                    },
+                    {
+                        name: "get_sync_history",
+                        description: `Get detailed sync operation history and audit trail, showing past sync operations, timing, and change statistics.`,
+                        inputSchema: {
+                            type: "object",
+                            properties: {
+                                path: {
+                                    type: "string",
+                                    description: `Optional: ABSOLUTE path to get history for a specific codebase. If not provided, shows global history summary.`
+                                },
+                                limit: {
+                                    type: "number",
+                                    description: `Number of recent entries to show (default: 10, max: 50)`,
+                                    default: 10,
+                                    maximum: 50
+                                }
+                            },
+                            required: []
+                        }
+                    },
                 ]
             };
         });
@@ -238,6 +356,22 @@ This tool is versatile and can be used before completing various tasks to retrie
                     return await this.toolHandlers.handleClearIndex(args);
                 case "get_indexing_status":
                     return await this.toolHandlers.handleGetIndexingStatus(args);
+                case "enable_realtime_sync":
+                    return await this.toolHandlers.handleEnableRealtimeSync(args);
+                case "disable_realtime_sync":
+                    return await this.toolHandlers.handleDisableRealtimeSync(args);
+                case "get_realtime_sync_status":
+                    return await this.toolHandlers.handleGetRealtimeSyncStatus(args);
+                case "get_sync_status":
+                    return await this.toolHandlers.handleGetSyncStatus(args);
+                case "sync_now":
+                    return await this.toolHandlers.handleSyncNow(args);
+                case "get_performance_stats":
+                    return await this.toolHandlers.handleGetPerformanceStats(args);
+                case "health_check":
+                    return await this.toolHandlers.handleHealthCheck(args);
+                case "get_sync_history":
+                    return await this.toolHandlers.handleGetSyncHistory(args);
 
                 default:
                     throw new Error(`Unknown tool: ${name}`);

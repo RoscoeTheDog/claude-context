@@ -10,6 +10,11 @@ export class FileSynchronizer {
     private rootDir: string;
     private snapshotPath: string;
     private ignorePatterns: string[];
+    
+    // Phase 3: Performance optimization caches
+    private mtimeCache = new Map<string, number>();
+    private lastFullScan = 0;
+    private readonly FULL_SCAN_INTERVAL = 300000; // 5 minutes
 
     constructor(rootDir: string, ignorePatterns: string[] = []) {
         this.rootDir = rootDir;
@@ -37,6 +42,35 @@ export class FileSynchronizer {
         }
         const content = await fs.readFile(filePath, 'utf-8');
         return crypto.createHash('sha256').update(content).digest('hex');
+    }
+
+    /**
+     * Phase 3: Optimized hash computation with mtime caching
+     * Only rehashes file if mtime has changed since last check
+     */
+    private async hashFileOptimized(filePath: string, relativePath: string): Promise<string> {
+        const stat = await fs.stat(filePath);
+        if (stat.isDirectory()) {
+            throw new Error(`Attempted to hash a directory: ${filePath}`);
+        }
+
+        const currentMtime = stat.mtimeMs;
+        const cachedMtime = this.mtimeCache.get(relativePath);
+        const existingHash = this.fileHashes.get(relativePath);
+
+        // Use cached hash if mtime hasn't changed
+        if (cachedMtime === currentMtime && existingHash) {
+            return existingHash;
+        }
+
+        // File changed or not in cache - compute new hash
+        const content = await fs.readFile(filePath, 'utf-8');
+        const hash = crypto.createHash('sha256').update(content).digest('hex');
+        
+        // Update caches
+        this.mtimeCache.set(relativePath, currentMtime);
+        
+        return hash;
     }
 
     private async generateFileHashes(dir: string): Promise<Map<string, string>> {
@@ -82,7 +116,7 @@ export class FileSynchronizer {
                 // Verify it's really a file and not ignored
                 if (!this.shouldIgnore(relativePath, false)) {
                     try {
-                        const hash = await this.hashFile(fullPath);
+                        const hash = await this.hashFileOptimized(fullPath, relativePath);
                         fileHashes.set(relativePath, hash);
                     } catch (error: any) {
                         console.warn(`[Synchronizer] Cannot hash file ${fullPath}: ${error.message}`);
@@ -288,9 +322,18 @@ export class FileSynchronizer {
             fileHashesArray.push([key, this.fileHashes.get(key)!]);
         });
 
+        // Convert mtime cache Map to array for serialization
+        const mtimeCacheArray: [string, number][] = [];
+        const mtimeKeys = Array.from(this.mtimeCache.keys());
+        mtimeKeys.forEach(key => {
+            mtimeCacheArray.push([key, this.mtimeCache.get(key)!]);
+        });
+
         const data = JSON.stringify({
             fileHashes: fileHashesArray,
-            merkleDAG: this.merkleDAG.serialize()
+            merkleDAG: this.merkleDAG.serialize(),
+            mtimeCache: mtimeCacheArray,
+            lastFullScan: this.lastFullScan
         });
         await fs.writeFile(this.snapshotPath, data, 'utf-8');
         console.log(`Saved snapshot to ${this.snapshotPath}`);
@@ -310,6 +353,18 @@ export class FileSynchronizer {
             if (obj.merkleDAG) {
                 this.merkleDAG = MerkleDAG.deserialize(obj.merkleDAG);
             }
+
+            // Load mtime cache if available
+            this.mtimeCache = new Map();
+            if (obj.mtimeCache) {
+                for (const [key, value] of obj.mtimeCache) {
+                    this.mtimeCache.set(key, value);
+                }
+            }
+
+            // Load last full scan timestamp
+            this.lastFullScan = obj.lastFullScan || 0;
+
             console.log(`Loaded snapshot from ${this.snapshotPath}`);
         } catch (error: any) {
             if (error.code === 'ENOENT') {
@@ -321,6 +376,132 @@ export class FileSynchronizer {
                 throw error;
             }
         }
+    }
+
+    /**
+     * Phase 3: Update single file for real-time changes
+     * Optimizes for single file updates without full directory scan
+     */
+    async updateSingleFile(filePath: string): Promise<{ action: 'added' | 'modified' | 'removed'; relativePath: string }> {
+        const relativePath = path.relative(this.rootDir, filePath);
+        
+        try {
+            // Check if file exists
+            const exists = await fs.access(filePath).then(() => true).catch(() => false);
+            
+            if (!exists) {
+                // File was deleted
+                if (this.fileHashes.has(relativePath)) {
+                    this.fileHashes.delete(relativePath);
+                    this.mtimeCache.delete(relativePath);
+                    this.merkleDAG = this.buildMerkleDAG(this.fileHashes);
+                    await this.saveSnapshot();
+                    return { action: 'removed', relativePath };
+                }
+                return { action: 'removed', relativePath }; // Already removed
+            }
+
+            // Check if should ignore
+            const stat = await fs.stat(filePath);
+            if (stat.isDirectory() || this.shouldIgnore(relativePath, false)) {
+                return { action: 'removed', relativePath }; // Treat as no-op
+            }
+
+            // File exists - check if it's new or modified
+            const newHash = await this.hashFileOptimized(filePath, relativePath);
+            const existingHash = this.fileHashes.get(relativePath);
+            
+            if (!existingHash) {
+                // New file
+                this.fileHashes.set(relativePath, newHash);
+                this.merkleDAG = this.buildMerkleDAG(this.fileHashes);
+                await this.saveSnapshot();
+                return { action: 'added', relativePath };
+            } else if (existingHash !== newHash) {
+                // Modified file
+                this.fileHashes.set(relativePath, newHash);
+                this.merkleDAG = this.buildMerkleDAG(this.fileHashes);
+                await this.saveSnapshot();
+                return { action: 'modified', relativePath };
+            }
+
+            // No change
+            return { action: 'modified', relativePath }; // No-op, but return something
+            
+        } catch (error: any) {
+            console.error(`[Synchronizer] Error updating single file ${filePath}:`, error.message);
+            throw error;
+        }
+    }
+
+    /**
+     * Phase 3: Incremental change detection
+     * Uses mtime and selective scanning to minimize file I/O
+     */
+    async checkForChangesIncremental(): Promise<{ added: string[], removed: string[], modified: string[] }> {
+        const now = Date.now();
+        
+        // Force full scan periodically or if it's the first time
+        if (now - this.lastFullScan > this.FULL_SCAN_INTERVAL || this.lastFullScan === 0) {
+            console.log('[Synchronizer] Performing full scan (periodic or first-time)');
+            this.lastFullScan = now;
+            return this.checkForChanges(); // Fallback to full scan
+        }
+
+        console.log('[Synchronizer] Performing incremental change detection...');
+        
+        // Quick check: scan directory for new/removed files using mtime
+        const quickScan = await this.quickDirectoryScan(this.rootDir);
+        
+        if (quickScan.hasChanges) {
+            console.log('[Synchronizer] Changes detected, performing targeted rescan');
+            return this.checkForChanges(); // Full rescan if changes detected
+        }
+
+        console.log('[Synchronizer] No changes detected in incremental scan');
+        return { added: [], removed: [], modified: [] };
+    }
+
+    /**
+     * Quick directory scan using mtime to detect if any changes occurred
+     */
+    private async quickDirectoryScan(dir: string): Promise<{ hasChanges: boolean; changedPaths: string[] }> {
+        const changedPaths: string[] = [];
+        let hasChanges = false;
+
+        const scanDirectory = async (currentDir: string): Promise<void> => {
+            try {
+                const entries = await fs.readdir(currentDir, { withFileTypes: true });
+                
+                for (const entry of entries) {
+                    const fullPath = path.join(currentDir, entry.name);
+                    const relativePath = path.relative(this.rootDir, fullPath);
+
+                    if (this.shouldIgnore(relativePath, entry.isDirectory())) {
+                        continue;
+                    }
+
+                    const stat = await fs.stat(fullPath);
+                    
+                    if (stat.isDirectory()) {
+                        await scanDirectory(fullPath);
+                    } else if (stat.isFile()) {
+                        const currentMtime = stat.mtimeMs;
+                        const cachedMtime = this.mtimeCache.get(relativePath);
+                        
+                        if (cachedMtime === undefined || cachedMtime !== currentMtime) {
+                            hasChanges = true;
+                            changedPaths.push(relativePath);
+                        }
+                    }
+                }
+            } catch (error: any) {
+                console.warn(`[Synchronizer] Error scanning directory ${currentDir}:`, error.message);
+            }
+        };
+
+        await scanDirectory(dir);
+        return { hasChanges, changedPaths };
     }
 
     /**

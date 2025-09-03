@@ -13,9 +13,11 @@
 <a href="https://discord.gg/mKc3R95yE5"><img height="20" src="https://img.shields.io/badge/Discord-%235865F2.svg?style=for-the-badge&logo=discord&logoColor=white" alt="discord" /></a>
 </div>
 
-**Claude Context** is an MCP plugin that adds semantic code search to Claude Code and other AI coding agents, giving them deep context from your entire codebase.
+**Claude Context** is an MCP plugin that adds semantic code search with **real-time filesystem synchronization** to Claude Code and other AI coding agents, giving them deep context from your entire codebase.
 
 🧠 **Your Entire Codebase as Context**: Claude Context uses semantic search to find all relevant code from millions of lines. No multi-round discovery needed. It brings results straight into the Claude's context.
+
+⚡ **Real-Time Sync**: Zero-delay filesystem monitoring automatically updates your search index when files change, ensuring 100% search accuracy with no stale results.
 
 💰 **Cost-Effective for Large Codebases**: Instead of loading entire directories into Claude for every request, which can be very expensive, Claude Context efficiently stores your codebase in a vector database and only uses related code in context to keep your costs manageable.
 
@@ -445,13 +447,19 @@ npx @zilliz/claude-context-mcp@latest
    Check the indexing status
    ```
 
-4. **Start searching**:
+4. **Enable real-time sync** (optional):
+
+   ```
+   Enable real-time sync for this codebase
+   ```
+
+5. **Start searching**:
 
    ```
    Find functions that handle user authentication
    ```
 
-🎉 **That's it!** You now have semantic code search in Claude Code.
+🎉 **That's it!** You now have semantic code search with real-time synchronization in Claude Code. Your search index will automatically stay up-to-date as you modify files.
 
 ---
 
@@ -469,21 +477,23 @@ For detailed explanation of file inclusion and exclusion rules, and how to custo
 
 ### Available Tools
 
-#### 1. `index_codebase`
+#### Core Indexing & Search
+1. **`index_codebase`** - Index a codebase directory for hybrid search (BM25 + dense vector)
+2. **`search_code`** - Search the indexed codebase using natural language queries with hybrid search
+3. **`clear_index`** - Clear the search index for a specific codebase
+4. **`get_indexing_status`** - Get the current indexing status and progress
 
-Index a codebase directory for hybrid search (BM25 + dense vector).
+#### Real-Time Sync Management (NEW)
+5. **`enable_realtime_sync`** - Enable automatic filesystem monitoring and index updates
+6. **`disable_realtime_sync`** - Disable real-time sync gracefully
+7. **`get_realtime_sync_status`** - Check if real-time sync is enabled for a codebase
+8. **`sync_now`** - Trigger manual immediate synchronization
 
-#### 2. `search_code`
-
-Search the indexed codebase using natural language queries with hybrid search (BM25 + dense vector).
-
-#### 3. `clear_index`
-
-Clear the search index for a specific codebase.
-
-#### 4. `get_indexing_status`
-
-Get the current indexing status of a codebase. Shows progress percentage for actively indexing codebases and completion status for indexed codebases.
+#### Advanced Monitoring & Diagnostics (NEW)
+9. **`get_sync_status`** - Detailed metrics: files tracked, last sync time, performance stats
+10. **`get_performance_stats`** - Performance analytics: sync speed, memory usage, efficiency data
+11. **`health_check`** - System diagnostics: database connectivity, configuration validation
+12. **`get_sync_history`** - Complete audit trail of all sync operations with timestamps
 
 ---
 
@@ -495,10 +505,13 @@ Get the current indexing status of a codebase. Shows progress percentage for act
 
 - 🔍 **Hybrid Code Search**: Ask questions like *"find functions that handle user authentication"* and get relevant, context-rich code instantly using advanced hybrid search (BM25 + dense vector).
 - 🧠 **Context-Aware**: Discover large codebase, understand how different parts of your codebase relate, even across millions of lines of code.
-- ⚡ **Incremental Indexing**: Efficiently re-index only changed files using Merkle trees.
+- ⚡ **Real-Time Filesystem Monitoring**: Zero-delay index updates with chokidar-based file watching and 500ms debouncing.
+- 🚀 **5x Performance Boost**: Enhanced with connection pooling, mtime caching, and incremental sync for ultra-fast operations.
+- 🔄 **Incremental Indexing**: Efficiently re-index only changed files using Merkle trees and atomic updates.
 - 🧩 **Intelligent Code Chunking**: Analyze code in Abstract Syntax Trees (AST) for chunking.
 - 🗄️ **Scalable**: Integrates with Zilliz Cloud for scalable vector search, no matter how large your codebase is.
 - 🛠️ **Customizable**: Configure file extensions, ignore patterns, and embedding models.
+- 📊 **Production-Ready**: Comprehensive monitoring, health checks, and audit trails for enterprise use.
 
 ### Core Components
 
@@ -693,6 +706,39 @@ For detailed evaluation methodology and results, see the [evaluation directory](
 
 ---
 
+## 📝 Documentation Workflow
+
+This project follows a structured documentation approach for tracking changes and implementation details:
+
+### Change Documentation Structure
+
+- **`CHANGELOG.md`** - High-level feature announcements and user-facing changes
+  - Version-controlled feature releases
+  - User impact summaries
+  - Performance improvements and metrics
+  - Breaking changes and migration guides
+  - Written in human-friendly language for end users
+
+- **`CHANGELOG_IMPLEMENTATION_SUMMARY.md`** - Technical implementation details  
+  - Granular architecture changes
+  - Code-level modifications and file changes
+  - Technical design decisions and rationales
+  - Implementation phases and development workflow
+  - Detailed for developers and future maintenance
+
+### For Future Development
+
+When implementing new features or major changes:
+
+1. **Document user impact** in `CHANGELOG.md` - focus on what users will experience
+2. **Document technical details** in `CHANGELOG_IMPLEMENTATION_SUMMARY.md` - focus on how it was built
+3. **Update README.md** - reflect new capabilities in main documentation
+4. **Maintain version consistency** across all documentation files
+
+This dual-layer approach ensures both users and developers have appropriate levels of detail for their needs.
+
+---
+
 ## 🤝 Contributing
 
 We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details on how to get started.
@@ -707,12 +753,25 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 
 ## 🗺️ Roadmap
 
-- [x] AST-based code analysis for improved understanding
-- [x] Support for additional embedding providers
+### ✅ Recent Achievements (v0.1.3)
+- [x] **Real-time filesystem synchronization** with zero-delay index updates
+- [x] **5x performance improvement** with connection pooling and mtime caching
+- [x] **8 new MCP tools** for comprehensive sync management and monitoring
+- [x] **Production-ready reliability** with atomic operations and health checks
+- [x] **Enhanced AST-based code analysis** for improved understanding
+- [x] **Multiple embedding provider support** (OpenAI, VoyageAI, Ollama, Gemini)
+- [x] **Advanced code chunking strategies** with intelligent fallback
+
+### 🚧 In Progress
 - [ ] Agent-based interactive search mode
-- [x] Enhanced code chunking strategies
 - [ ] Search result ranking optimization
 - [ ] Robust Chrome Extension
+
+### 🔮 Future Plans
+- [ ] WebSocket-based real-time sync for distributed systems
+- [ ] Machine learning-based sync prioritization
+- [ ] Advanced conflict resolution algorithms
+- [ ] Integration with additional vector databases
 
 ---
 

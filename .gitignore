@@ -59,7 +59,7 @@ __pycache__/
 *.log
 !evaluation/case_study/**/*.log
 
-.claude/*
+.claude/
 CLAUDE.md
 
 .cursor/*
@@ -69,3 +69,4 @@ repos
 
 evaluation/retrieval_results*
 .venv/
+CLAUDE_INIT.md

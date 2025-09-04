@@ -1,6 +1,66 @@
 # Claude Context MCP Server Installation Guide
 
+> **For Claude Code**: This file contains complete installation instructions that Claude Code can execute automatically. Simply ask Claude Code to "read @INSTALL.md and install the Claude Context MCP server".
+
 This guide provides instructions for installing and configuring the Claude Context MCP server for use with Claude Desktop.
+
+## Instructions for Future Agent Updates
+
+**File Purpose**: The INSTALL.md file serves as a comprehensive, automated installation guide for setting up the Claude Context MCP server from the local directory in a **containerized and portable manner** while remaining **globally accessible** to Claude Code.
+
+**Core Requirements When Updating This File**:
+
+### 🎯 **Cross-Platform Support**
+- **Windows**: PowerShell, Command Prompt, Git Bash, WSL
+- **macOS**: zsh, bash, fish shells
+- **Linux**: bash, zsh, fish, sh shells
+- **Detection Logic**: Automatically detect platform and available shells
+
+### 🔄 **Graceful Degradation Hierarchy**
+1. **Primary**: Full automated installation with environment detection
+2. **Secondary**: Manual commands with platform-specific instructions
+3. **Tertiary**: Basic installation with user-guided steps
+4. **Fallback**: Error messages with troubleshooting links
+
+### 📦 **Dependency Management**
+- **Auto-Detection**: Check for required tools (Node.js, pnpm, API keys)
+- **Default Locations**: Install dependencies to system defaults unless specified
+- **Graceful Handling**: Provide alternative methods if standard installation fails
+- **Version Verification**: Ensure minimum required versions are met
+
+### 🔧 **Environment Variable Management**
+- **Set Variables**: Use platform-appropriate methods for persistent environment variables
+- **Shell Refresh**: Force shell environment reload with fallback methods:
+  1. `source ~/.bashrc` / `source ~/.zshrc` / equivalent
+  2. `exec $SHELL` to restart shell session
+  3. Prompt user to open new terminal/shell
+  4. **Final Fallback**: Instruct user to log out/in or restart machine
+
+### 🏗️ **Installation Architecture**
+- **Containerized**: All server files remain in project directory
+- **Portable**: Installation works when project is moved/cloned
+- **Global Registration**: Server appears globally accessible to Claude Code
+- **Self-Contained**: No pollution of global system directories
+
+### 🛡️ **Error Handling Standards**
+- **Validation**: Verify each step before proceeding
+- **Rollback**: Provide cleanup instructions for failed installations
+- **Clear Messaging**: User-friendly error messages with next steps
+- **Logging**: Capture installation progress for debugging
+
+### 🔒 **Security & Validation**
+- **Token Security**: Never log or expose API keys in plain text
+- **Binary Verification**: Validate built components before execution
+- **File Permissions**: Set appropriate permissions for executables and config files
+- **Input Sanitization**: Validate all user inputs and paths
+
+### 🌐 **Network & Enterprise Support**
+- **Proxy Detection**: Auto-detect and configure for corporate proxies
+- **Offline Mode**: Support installation without internet access when possible
+- **Administrator Privileges**: Handle elevation requests appropriately per platform
+- **Firewall Considerations**: Document required network access and ports
+
+**Always maintain backward compatibility and test across all supported platforms when making updates.**
 
 ## Quick Start
 
@@ -213,46 +273,99 @@ After installation, Claude will have access to these enhanced tools:
 
 ## Troubleshooting
 
+### Cross-Platform Diagnostics
+
+**Environment Detection Issues:**
+- **Windows**: Check PowerShell execution policy: `Get-ExecutionPolicy`
+- **macOS**: Verify shell type: `echo $SHELL` and permissions for terminal access
+- **Linux**: Ensure bash/zsh compatibility and check `$PATH` variable
+- **WSL**: Confirm proper WSL setup and Node.js accessibility from WSL environment
+
+**Shell Environment Refresh:**
+If environment variables aren't recognized after setting:
+1. **Primary**: `source ~/.bashrc` (Linux) / `source ~/.zshrc` (macOS) / restart PowerShell (Windows)
+2. **Secondary**: `exec $SHELL` to restart current shell session  
+3. **Tertiary**: Open new terminal/command prompt window
+4. **Fallback**: Log out and back in, or restart system
+
 ### Common Issues
 
 **"API key validation failed"**
-- Verify your OpenAI API key is correct and has sufficient credits
-- Check that your Zilliz token is valid and properly formatted
+- **Validation Steps**: Test API keys independently before installation
+- **Windows**: Use `$env:OPENAI_API_KEY` in PowerShell to verify variable set
+- **Unix**: Use `echo $OPENAI_API_KEY` to verify variable set  
+- **Proxy Issues**: Check corporate proxy settings may be blocking API calls
+- **Credential Format**: Verify OpenAI key starts with `sk-` and Zilliz token format
+- **Account Status**: Confirm sufficient credits and valid Zilliz Cloud account
 
 **"pnpm is not installed"**
 ```bash
+# Primary installation method
 npm install -g pnpm
+
+# Alternative methods if npm fails
+# Windows: winget install pnpm
+# macOS: brew install pnpm  
+# Linux: curl -fsSL https://get.pnpm.io/install.sh | sh -
+
+# Verify installation
+pnpm --version
 ```
 
 **"Node.js version not supported"**
-- Install Node.js 20 or higher from [nodejs.org](https://nodejs.org/)
+- **Minimum Version**: Node.js 20+ required - check with `node --version`
+- **Windows**: Download from [nodejs.org](https://nodejs.org/) or use `winget install OpenJS.NodeJS`
+- **macOS**: Use Homebrew `brew install node@20` or download from nodejs.org
+- **Linux**: Use NodeSource repository or nvm: `nvm install 20 && nvm use 20`
+- **Version Conflicts**: Use nvm (Node Version Manager) to manage multiple versions
 
 **"Permission denied" on macOS/Linux**
-- Run with appropriate permissions or check directory ownership
-- Ensure Claude Desktop has been run at least once to create config directory
+- **Directory Permissions**: Run `ls -la ~/.config/claude/` to check config directory
+- **Create Config Directory**: `mkdir -p ~/.config/claude` if missing
+- **File Ownership**: `sudo chown -R $USER:$USER ~/.config/claude/`
+- **macOS Specific**: Grant terminal full disk access in System Preferences → Security & Privacy
+- **Enterprise Systems**: May require administrator privileges for global installations
 
 **"Claude Desktop doesn't show the MCP server"**
-- Restart Claude Desktop completely
-- Check the configuration file was created correctly
-- Run the verification script to test the server
+- **Configuration Validation**: Check JSON syntax in claude_desktop_config.json
+- **File Locations**: 
+  - Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+  - macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`  
+  - Linux: `~/.config/claude/claude_desktop_config.json`
+- **Complete Restart**: Fully quit and restart Claude Desktop (not just minimize)
+- **Backup Verification**: Check if backup config exists and restore if needed
+- **Build Verification**: Confirm `packages/mcp/dist/index.js` exists and is executable
 
 **"Real-time sync not working"**
-- Verify the codebase is indexed first with `index_codebase`
-- Check that the path has write permissions for file watching
-- Use `health_check` tool to diagnose filesystem watching issues
-- Ensure no antivirus software is blocking file system monitoring
+- **Indexing Prerequisite**: Verify codebase is indexed first with `index_codebase`
+- **File System Permissions**: Check path has write/read permissions for file watching
+- **Antivirus Interference**: Temporarily disable real-time protection to test
+- **Filesystem Type**: Some network drives don't support file watching events
+- **Resource Limits**: Check if system has reached max file watchers: `cat /proc/sys/fs/inotify/max_user_watches` (Linux)
+- **Diagnostic Tools**: Use `health_check` tool to diagnose filesystem watching issues
 
 **"Performance seems slow"**
-- Check `get_performance_stats` for bottlenecks
-- Verify connection pooling is enabled in configuration
-- Use `get_sync_status` to check cache performance
-- Consider adjusting `debounceMs` for your filesystem
+- **Metrics Analysis**: Check `get_performance_stats` for bottlenecks and resource usage
+- **Connection Pooling**: Verify enabled in configuration file
+- **Cache Performance**: Use `get_sync_status` to check mtime cache hit rates
+- **Filesystem Optimization**: Consider adjusting `debounceMs` for your storage type (SSD vs HDD)
+- **Network Latency**: Test Zilliz Cloud connection speed from your region
+- **Resource Monitoring**: Check system CPU/Memory usage during operations
 
 **"Sync operations failing"**
-- Use `health_check` to identify system issues
-- Check `get_sync_history` for error patterns
-- Verify vector database connectivity with Zilliz Cloud
-- Try manual sync with `sync_now` to test connectivity
+- **System Health**: Use `health_check` to identify configuration and connectivity issues
+- **Error Pattern Analysis**: Check `get_sync_history` for recurring failure patterns
+- **Network Connectivity**: Test Zilliz Cloud connection: `curl -I https://cloud.zilliz.com`
+- **Manual Sync Test**: Try manual sync with `sync_now` to isolate connectivity vs automation issues
+- **Authentication Issues**: Verify API keys haven't expired or been revoked
+- **Rate Limiting**: Check if hitting API rate limits (OpenAI: 3000 RPM, Zilliz varies)
+
+**"Installation fails during build process"**
+- **Build Dependencies**: Clear build cache: `pnpm clean` and rebuild
+- **TypeScript Compilation**: Check for TypeScript errors: `pnpm run build --verbose`
+- **Network Issues**: Use `pnpm install --network-timeout 100000` for slow connections
+- **Disk Space**: Ensure sufficient disk space for dependencies and build artifacts
+- **Proxy Configuration**: Set npm/pnpm proxy: `pnpm config set proxy http://your-proxy:port`
 
 ### Getting Help
 

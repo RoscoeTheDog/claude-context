@@ -29,7 +29,7 @@
   "features": {
     "realtimeSync": {
       "enabled": true,
-      "autoEnable": false,
+      "autoEnable": true,
       "debounceMs": 500
     },
     "performance": {

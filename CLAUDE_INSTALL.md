@@ -94,15 +94,20 @@ EMBEDDING_PROVIDER=OpenAI
 OPENAI_API_KEY=sk-your-openai-key
 EMBEDDING_MODEL=text-embedding-3-small
 MILVUS_TOKEN=your-zilliz-cloud-token
+
+# Optional: Auto-enable real-time sync after indexing
+REALTIME_SYNC_AUTO_ENABLE=true
 EOF
 
 # Install without environment variables (reads from ~/.context/.env)
 claude mcp add claude-context -- npx @zilliz/claude-context-mcp@latest
 ```
 
-**Pros**: Clean config, reusable across MCP clients, separation of concerns
+**Pros**: Clean config, reusable across MCP clients, separation of concerns, auto-enable sync
 **Time**: 5-10 minutes
 **Validation**: ✅ All platforms
+
+**Note**: With `REALTIME_SYNC_AUTO_ENABLE=true`, real-time sync is automatically enabled after each `index_codebase` operation. Set to `false` (or omit) to require manual enablement.
 
 ### Method 3: Manual Configuration ⚠️
 
@@ -193,7 +198,8 @@ claude --version
 - **Zero-delay sync**: Automatic index updates when files change
 - **Chokidar integration**: Production-grade filesystem watching
 - **Debouncing**: Handles rapid file changes efficiently (configurable 500ms)
-- **Auto-enable**: Optional auto-enable for all indexed codebases
+- **Auto-enable after indexing**: Set `REALTIME_SYNC_AUTO_ENABLE=true` to automatically enable sync after indexing
+- **Opt-in default**: Manual enable required by default for safety
 
 ### Performance Enhancements ⚡
 - **Connection pooling**: 5x faster sync operations
@@ -233,6 +239,10 @@ MILVUS_TOKEN=your-zilliz-token
 
 # Optional: Custom Milvus endpoint
 MILVUS_ADDRESS=your-custom-endpoint
+
+# Real-Time Sync (Auto-Enable Feature)
+REALTIME_SYNC_AUTO_ENABLE=false  # Set to 'true' to auto-enable after indexing
+REALTIME_SYNC_DEBOUNCE_MS=500    # Debounce interval (milliseconds)
 
 # Advanced
 HYBRID_MODE=true

@@ -50,6 +50,11 @@ Thumbs.db
 *.tmp
 *.temp
 
+# Testing directory (ephemeral artifacts only)
+.testing/*
+!.testing/.gitignore
+!.testing/README.md
+
 # Extension specific
 *.vsix
 *.crx

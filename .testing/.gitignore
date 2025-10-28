@@ -1,0 +1,4 @@
+# Ignore all testing artifacts
+*
+!.gitignore
+!README.md

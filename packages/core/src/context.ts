@@ -299,6 +299,17 @@ export class Context {
     }
 
     /**
+     * Check if real-time sync should be automatically enabled after indexing
+     */
+    private shouldAutoEnableRealtimeSync(): boolean {
+        const autoEnableEnv = envManager.get('REALTIME_SYNC_AUTO_ENABLE');
+        if (autoEnableEnv === undefined || autoEnableEnv === null) {
+            return false; // Default to false (opt-in)
+        }
+        return autoEnableEnv.toLowerCase() === 'true';
+    }
+
+    /**
      * Generate collection name based on codebase path and hybrid mode
      */
     public getCollectionName(codebasePath: string): string {
@@ -374,6 +385,19 @@ export class Context {
             total: codeFiles.length,
             percentage: 100
         });
+
+        // Auto-enable real-time sync if configured
+        if (this.shouldAutoEnableRealtimeSync()) {
+            try {
+                console.log(`[Context] 🔄 Auto-enabling real-time sync (REALTIME_SYNC_AUTO_ENABLE=true)...`);
+                await this.enableRealtimeSync(codebasePath);
+                console.log(`[Context] ✅ Real-time sync auto-enabled successfully`);
+            } catch (error) {
+                console.warn(`[Context] ⚠️  Failed to auto-enable real-time sync: ${error instanceof Error ? error.message : error}`);
+                console.warn(`[Context] ℹ️  You can manually enable it using enable_realtime_sync tool`);
+                // Don't fail the indexing operation - this is non-critical
+            }
+        }
 
         return {
             indexedFiles: result.processedFiles,

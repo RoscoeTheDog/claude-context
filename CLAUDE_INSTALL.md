@@ -371,6 +371,39 @@ pnpm --version
    sudo sysctl -p
    ```
 
+### "Auto-enable feature not working"
+If `REALTIME_SYNC_AUTO_ENABLE=true` is set but real-time sync is not automatically enabled after indexing:
+
+1. **MCP server restart required**: Environment variable changes require restarting the MCP server
+   ```bash
+   # For Claude Code CLI: Exit and restart the CLI
+   # For Claude Desktop: Fully quit and reopen the application
+   ```
+
+2. **Verify environment variable is set**:
+   ```bash
+   # Check MCP configuration
+   claude mcp get claude-context
+   # Look for REALTIME_SYNC_AUTO_ENABLE in Environment section
+   ```
+
+3. **Alternative: Use global config**:
+   ```bash
+   # Add to ~/.context/.env (no restart required for future indexing)
+   echo "REALTIME_SYNC_AUTO_ENABLE=true" >> ~/.context/.env
+   ```
+
+4. **Manual workaround**: If auto-enable continues not working, manually enable after indexing:
+   ```bash
+   # After index_codebase completes
+   enable_realtime_sync /path/to/codebase
+   ```
+
+5. **Verify feature is working**:
+   - Check build includes auto-enable logic: `grep "Auto-enabling" packages/core/dist/context.js`
+   - Test with a small codebase first
+   - Check console logs for auto-enable messages during indexing
+
 ### "Performance seems slow"
 1. **Check metrics**: Use `get_performance_stats` for bottleneck analysis
 2. **Connection pooling**: Verify enabled in configuration

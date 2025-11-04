@@ -1,6 +1,6 @@
 {
     "name": "@zilliz/claude-context-mcp",
-    "version": "0.1.4",
+    "version": "0.2.0",
     "description": "Model Context Protocol integration for Claude Context",
     "type": "module",
     "main": "dist/index.js",
@@ -13,19 +13,26 @@
         "lint": "eslint src --ext .ts",
         "lint:fix": "eslint src --ext .ts --fix",
         "typecheck": "tsc --noEmit",
+        "test": "vitest run",
+        "test:watch": "vitest",
+        "test:ui": "vitest --ui",
+        "test:coverage": "vitest run --coverage",
         "start": "tsx src/index.ts",
         "start:with-env": "OPENAI_API_KEY=${OPENAI_API_KEY:your-api-key-here} MILVUS_ADDRESS=${MILVUS_ADDRESS:localhost:19530} tsx src/index.ts",
         "prepublishOnly": "pnpm build"
     },
     "dependencies": {
-        "@zilliz/claude-context-core": "workspace:*",
         "@modelcontextprotocol/sdk": "^1.12.1",
+        "@zilliz/claude-context-core": "workspace:*",
         "zod": "^3.25.55"
     },
     "devDependencies": {
         "@types/node": "^20.0.0",
+        "@vitest/coverage-v8": "^4.0.6",
+        "@vitest/ui": "^4.0.6",
         "tsx": "^4.19.4",
-        "typescript": "^5.0.0"
+        "typescript": "^5.0.0",
+        "vitest": "^4.0.6"
     },
     "files": [
         "dist",

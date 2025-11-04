@@ -350,30 +350,30 @@ Git's repository discovery algorithm:
 ## 📝 Open Questions
 
 ### Technical
-1. **Caching**: Should traversal results be cached per session? Per process?
+1. ~~**Caching**: Should traversal results be cached per session? Per process?~~ **RESOLVED**
    - **Pro**: Faster subsequent calls
    - **Con**: Memory overhead, invalidation complexity
-   - **Decision**: TBD
+   - **Decision**: ✅ **NO caching in v0.2.0** - Traversal is fast enough (<100ms). Keep implementation simple. Can add as future enhancement if needed.
 
 2. **Snapshot metadata**: Should we store parent path in snapshot?
    - **Pro**: Faster lookups, explicit relationships
    - **Con**: More complex snapshot format
-   - **Decision**: TBD
+   - **Decision**: ✅ **OUT OF SCOPE for v0.2.0** - Future enhancement. Current snapshot lookups are sufficient.
 
-3. **Concurrent indexing**: If parent is indexing and subdirectory requested, should we wait or start subdirectory?
+3. **Concurrent indexing**: If parent is indexing and subdirectory requested, should we wait or start subdirectory? **RESOLVED**
    - **Current**: Return parent status (don't start subdirectory)
    - **Alternative**: Queue subdirectory request
-   - **Decision**: TBD
+   - **Decision**: ✅ **Return parent status** - Don't start subdirectory indexing. User can search parent (results may be incomplete until indexing completes).
 
 ### User Experience
-1. **Agent messaging**: Should agent inform user about parent reuse?
+1. **Agent messaging**: Should agent inform user about parent reuse? **RESOLVED**
    - **Current**: Yes (message in response)
-   - **Decision**: Finalize
+   - **Decision**: ✅ **YES** - Message format finalized in Phase 2 Task 2.3c
 
-2. **Search scoping**: Should search in subdirectory filter results to subdirectory?
+2. **Search scoping**: Should search in subdirectory filter results to subdirectory? **RESOLVED**
    - **Current**: No (search entire parent index)
    - **Alternative**: Add optional path filtering
-   - **Decision**: TBD (Phase 3)
+   - **Decision**: ✅ **OUT OF SCOPE for v0.2.0** - Future enhancement. Search returns entire parent index results.
 
 ---
 
@@ -381,12 +381,13 @@ Git's repository discovery algorithm:
 
 See [IMPLEMENTATION_INDEX.md](IMPLEMENTATION_INDEX.md) for detailed phase breakdown:
 
-1. **Phase 1**: Analysis & Design (estimate: 1 session)
-2. **Phase 2**: Core Implementation (estimate: 2-3 sessions)
-3. **Phase 3**: Integration & Testing (estimate: 1-2 sessions)
-4. **Phase 4**: Documentation & Rollout (estimate: 1 session)
+1. **Phase 1**: Analysis & Design (estimate: 1-1.5 sessions) - ✅ Updated with Task 1.0
+2. **Phase 2**: Core Implementation (estimate: 3-4 sessions) - ✅ Updated with task splits
+3. **Phase 3**: Integration & Testing (estimate: 2-3 sessions) - ✅ Updated with task splits
+4. **Phase 4**: Documentation & Rollout (estimate: 1 session) - ✅ Ready as-is
 
-**Total Estimate**: 5-7 agent sessions
+**Revised Estimate**: 7-10 agent sessions (realistic with buffer: 10-12 sessions)
+**Status**: ✅ **READY TO START** (all audit changes applied 2025-11-03)
 
 ---
 

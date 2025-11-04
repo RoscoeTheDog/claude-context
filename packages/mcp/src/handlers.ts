@@ -3,7 +3,7 @@ import * as path from "path";
 import * as crypto from "crypto";
 import { Context, COLLECTION_LIMIT_MESSAGE } from "@zilliz/claude-context-core";
 import { SnapshotManager } from "./snapshot.js";
-import { ensureAbsolutePath, truncateContent, trackCodebasePath } from "./utils.js";
+import { ensureAbsolutePath, truncateContent, trackCodebasePath, findParentIndex } from "./utils.js";
 
 export class ToolHandlers {
     private context: Context;
@@ -294,8 +294,9 @@ export class ToolHandlers {
     }
 
     public async handleIndexCodebase(args: any) {
-        const { path: codebasePath, force, splitter, customExtensions, ignorePatterns } = args;
+        const { path: codebasePath, force, scope, splitter, customExtensions, ignorePatterns } = args;
         const forceReindex = force || false;
+        const indexScope = scope || 'auto';
         const splitterType = splitter || 'ast'; // Default to AST
         const customFileExtensions = customExtensions || [];
         const customIgnorePatterns = ignorePatterns || [];
@@ -303,6 +304,19 @@ export class ToolHandlers {
         try {
             // Sync indexed codebases from cloud first
             await this.syncIndexedCodebasesFromCloud();
+
+            // Validate scope parameter
+            if (indexScope !== 'auto' && indexScope !== 'local') {
+                return {
+                    content: [{
+                        type: "text",
+                        text: `Error: Invalid scope parameter '${indexScope}'. Must be 'auto' or 'local'.`
+                    }],
+                    isError: true
+                };
+            }
+
+            console.log(`[INDEX-CODEBASE] scope=${indexScope}, force=${forceReindex}`);
 
             // Validate splitter parameter
             if (splitterType !== 'ast' && splitterType !== 'langchain') {
@@ -338,6 +352,57 @@ export class ToolHandlers {
                     }],
                     isError: true
                 };
+            }
+
+            // NEW: Parent traversal logic (if scope=auto and not force)
+            if (!forceReindex && indexScope === 'auto') {
+                console.log(`[INDEX-CODEBASE] Starting parent traversal...`);
+                const parentResult = findParentIndex(absolutePath, this.snapshotManager);
+
+                if (parentResult.found && parentResult.parentPath) {
+                    console.log(`[INDEX-CODEBASE] ✓ Using parent index: ${parentResult.parentPath} (${parentResult.reason})`);
+
+                    // Get parent status
+                    const parentInfo = this.snapshotManager.getCodebaseInfo(parentResult.parentPath);
+
+                    // Handle indexing-in-progress case
+                    if (parentInfo?.status === 'indexing') {
+                        const progress = (parentInfo as any).indexingPercentage || 0;
+                        return {
+                            content: [{
+                                type: "text",
+                                text: `Parent index at '${parentResult.parentPath}' is currently being indexed (${progress}% complete).\n\n` +
+                                      `You can search the codebase now, but results may be incomplete until indexing completes.`
+                            }],
+                            metadata: {
+                                index_path: parentResult.parentPath,
+                                status: 'indexing',
+                                progress: progress,
+                                reused: true
+                            }
+                        };
+                    }
+
+                    // Parent is already indexed - return early
+                    return {
+                        content: [{
+                            type: "text",
+                            text: `Using parent index at '${parentResult.parentPath}' (detected via ${parentResult.reason}).\n\n` +
+                                  `The requested path '${absolutePath}' is a subdirectory of an existing index. ` +
+                                  `Searches will cover the entire project. Use scope="local" to force subdirectory-only indexing.`
+                        }],
+                        metadata: {
+                            index_path: parentResult.parentPath,
+                            status: 'indexed',
+                            progress: 100,
+                            reused: true
+                        }
+                    };
+                }
+
+                console.log(`[INDEX-CODEBASE] ✗ No parent found, indexing requested path`);
+            } else {
+                console.log(`[INDEX-CODEBASE] Skipping traversal (force=${forceReindex}, scope=${indexScope})`);
             }
 
             // Check if already indexing

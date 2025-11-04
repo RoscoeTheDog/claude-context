@@ -610,13 +610,43 @@ npx @zilliz/claude-context-mcp@latest
 
 Index a codebase directory for hybrid search (BM25 + dense vector).
 
+**NEW in v0.2.0**: Automatically detects and reuses parent directory indexes to prevent duplication.
+
 **Parameters:**
 
 - `path` (required): Absolute path to the codebase directory to index
+- `scope` (optional): Index scope control (default: "auto")
+  - `"auto"`: Automatically detect and reuse parent indexes (recommended)
+  - `"local"`: Force indexing only the specified directory
 - `force` (optional): Force re-indexing even if already indexed (default: false)
 - `splitter` (optional): Code splitter to use - 'ast' for syntax-aware splitting with automatic fallback, 'langchain' for character-based splitting (default: "ast")
 - `customExtensions` (optional): Additional file extensions to include beyond defaults (e.g., ['.vue', '.svelte', '.astro']). Extensions should include the dot prefix or will be automatically added (default: [])
 - `ignorePatterns` (optional): Additional ignore patterns to exclude specific files/directories beyond defaults (e.g., ['static/**', '*.tmp', 'private/**']) (default: [])
+
+**Examples:**
+
+```javascript
+// Standard indexing (with parent detection)
+{ "path": "/home/user/my-project/src" }
+// → If /home/user/my-project is already indexed, reuses that index
+
+// Force subdirectory-only indexing
+{ "path": "/home/user/my-project/src", "scope": "local" }
+// → Creates separate index for /src only
+
+// Force re-indexing (skips parent detection)
+{ "path": "/home/user/my-project", "force": true }
+// → Re-indexes even if already indexed
+```
+
+**Parent Detection** (v0.2.0):
+When `scope="auto"` (default), the tool traverses upward from the requested path to find existing parent indexes:
+1. Checks for `.claude-context/` directory
+2. Checks if path is in indexed codebases snapshot
+3. Checks for `.git/` directory as project boundary
+4. Stops at filesystem root
+
+If a parent index is found, it returns the parent index information without creating a duplicate. Use `scope="local"` to force subdirectory-only indexing.
 
 ### 2. `search_code`
 

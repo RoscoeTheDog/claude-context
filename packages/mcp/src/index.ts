@@ -89,6 +89,11 @@ Index a codebase directory to enable semantic search using a configurable code s
 ⚠️ **IMPORTANT**:
 - You MUST provide an absolute path to the target codebase.
 
+✨ **Parent Index Detection**:
+- By default (scope="auto"), this tool automatically detects parent indexes
+- If a parent index exists, it will be reused instead of creating a duplicate
+- Use scope="local" to force indexing only the specified directory
+
 ✨ **Usage Guidance**:
 - This tool is typically used when search fails due to an unindexed codebase.
 - If indexing is attempted on an already indexed path, and a conflict is detected, you MUST prompt the user to confirm whether to proceed with a force index (i.e., re-indexing and overwriting the previous index).
@@ -134,6 +139,12 @@ This tool is versatile and can be used before completing various tasks to retrie
                                     type: "boolean",
                                     description: "Force re-indexing even if already indexed",
                                     default: false
+                                },
+                                scope: {
+                                    type: "string",
+                                    enum: ["auto", "local"],
+                                    description: "Index scope: 'auto' (detect parent, default) or 'local' (index only this directory)",
+                                    default: "auto"
                                 },
                                 splitter: {
                                     type: "string",

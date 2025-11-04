@@ -59,11 +59,23 @@ See [README.md](./README.md#prepare-environment-variables) for required environm
 
 ### `index_codebase`
 - `path` (required): Path to the codebase directory
+- `scope` (optional): Index scope - "auto" (detect parent, default) or "local" (index only this directory)
 - `force` (optional): Force re-indexing even if already indexed (default: false)
-- `splitter` (optional): Code splitter type - 'ast' or 'langchain' (default: 'ast')  
+- `splitter` (optional): Code splitter type - 'ast' or 'langchain' (default: 'ast')
 - `ignorePatterns` (optional): Additional ignore patterns to add to defaults (default: [])
   - Examples: `["static/**", "*.tmp", "private/**", "docs/generated/**"]`
   - Merged with default patterns (node_modules, .git, etc.)
+- `customExtensions` (optional): Additional file extensions to include beyond defaults (default: [])
+
+**Parent Detection** (NEW in v0.2.0):
+When `scope="auto"` (default), the tool traverses upward from the requested path to find existing parent indexes:
+1. Checks for `.claude-context/` directory
+2. Checks if path is in indexed codebases snapshot
+3. Checks for `.git/` directory as project boundary
+4. Stops at filesystem root
+
+If parent found, returns parent index info without creating duplicate.
+Use `scope="local"` to force subdirectory-only indexing.
 
 ### `search_code`
 - `path` (required): Path to the indexed codebase

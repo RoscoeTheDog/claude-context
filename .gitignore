@@ -8,6 +8,10 @@ dist/
 build/
 *.tsbuildinfo
 
+# Test coverage reports
+coverage/
+.nyc_output/
+
 # Environment variables
 .env
 .env.local

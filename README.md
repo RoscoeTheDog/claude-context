@@ -23,6 +23,27 @@
 
 ---
 
+## ✨ What's New in v0.2.0
+
+🎯 **Smart Parent Index Detection** - Work in any subdirectory without creating duplicate indexes!
+
+- **85-90% token savings** - No more manual parent detection logic
+- **Automatic discovery** - Finds and reuses parent indexes seamlessly
+- **Zero configuration** - Works automatically with `index_codebase`
+- **Cross-platform** - Full support for Windows, macOS, and Linux
+
+```bash
+# Work anywhere in your project - parent index is automatically found
+cd /your-project/src/components/ui
+claude
+> index this codebase
+# ✅ Uses parent index at /your-project (no duplicate!)
+```
+
+[See full details in Smart Subdirectory Indexing →](#-smart-subdirectory-indexing-v020)
+
+---
+
 ## 🚀 Demo
 
 ![img](https://lh7-rt.googleusercontent.com/docsz/AD_4nXf2uIf2c5zowp-iOMOqsefHbY_EwNGiutkxtNXcZVJ8RI6SN9DsCcsc3amXIhOZx9VcKFJQLSAqM-2pjU9zoGs1r8GCTUL3JIsLpLUGAm1VQd5F2o5vpEajx2qrc77iXhBu1zWj?key=qYdFquJrLcfXCUndY-YRBQ)

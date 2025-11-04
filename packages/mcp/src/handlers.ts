@@ -4,6 +4,7 @@ import * as crypto from "crypto";
 import { Context, COLLECTION_LIMIT_MESSAGE } from "@zilliz/claude-context-core";
 import { SnapshotManager } from "./snapshot.js";
 import { ensureAbsolutePath, truncateContent, trackCodebasePath, findParentIndex } from "./utils.js";
+import { buildTreeFromPaths, calculateStats, renderTree, renderList, type FileInfo, type RenderOptions } from "./tree-builder.js";
 
 export class ToolHandlers {
     private context: Context;
@@ -809,6 +810,184 @@ export class ToolHandlers {
                 content: [{
                     type: "text",
                     text: `Error searching code: ${errorMessage} Please check if the codebase has been indexed first.`
+                }],
+                isError: true
+            };
+        }
+    }
+
+    public async handleGetIndexTree(args: any) {
+        const {
+            path: codebasePath,
+            relative_path: relativePath,
+            depth = 3,
+            show_files: showFiles = true,
+            format = 'tree',
+            include_stats: includeStats = true
+        } = args;
+
+        try {
+            // Validate and resolve absolute path
+            const absolutePath = ensureAbsolutePath(codebasePath);
+
+            // Check if path exists
+            if (!fs.existsSync(absolutePath)) {
+                return {
+                    content: [{
+                        type: "text",
+                        text: `❌ Error: Path '${absolutePath}' does not exist.`
+                    }],
+                    isError: true
+                };
+            }
+
+            // Check if it's a directory
+            const stat = fs.statSync(absolutePath);
+            if (!stat.isDirectory()) {
+                return {
+                    content: [{
+                        type: "text",
+                        text: `❌ Error: Path '${absolutePath}' is not a directory.`
+                    }],
+                    isError: true
+                };
+            }
+
+            // Check if codebase is indexed
+            const isIndexed = this.snapshotManager.getIndexedCodebases().includes(absolutePath);
+            const isIndexing = this.snapshotManager.getIndexingCodebases().includes(absolutePath);
+
+            if (!isIndexed && !isIndexing) {
+                return {
+                    content: [{
+                        type: "text",
+                        text: `❌ Error: Codebase '${absolutePath}' is not indexed.\n\nPlease index it first using: index_codebase({ path: "${absolutePath}" })`
+                    }],
+                    isError: true
+                };
+            }
+
+            // Query all chunks from vector DB to get file metadata
+            // Note: Milvus has a maximum limit of 16384 results per query
+            // For most codebases this should be sufficient
+            const vectorDb = this.context.getVectorDatabase();
+            const collectionName = this.context.getCollectionName(absolutePath);
+
+            const allChunks = await vectorDb.query(
+                collectionName,
+                '', // Empty filter = match all
+                ['relativePath', 'fileExtension'] // Only need metadata fields
+                // Using default limit (16384) - no explicit limit parameter needed
+            );
+
+            if (!allChunks || allChunks.length === 0) {
+                return {
+                    content: [{
+                        type: "text",
+                        text: `ℹ️ No files indexed in '${absolutePath}'.`
+                    }],
+                    isError: false
+                };
+            }
+
+            // Build file map: deduplicate by path and count chunks
+            const fileMap = new Map<string, FileInfo>();
+            for (const chunk of allChunks) {
+                const filePath = chunk.relativePath;
+                const existing = fileMap.get(filePath);
+                if (existing) {
+                    existing.chunkCount++;
+                } else {
+                    fileMap.set(filePath, {
+                        path: filePath,
+                        extension: chunk.fileExtension || path.extname(filePath),
+                        chunkCount: 1
+                    });
+                }
+            }
+
+            let files = Array.from(fileMap.values());
+
+            // Filter by relative_path if specified
+            if (relativePath) {
+                const normalizedRelPath = relativePath.replace(/\\/g, '/').replace(/\/+$/, ''); // Remove trailing slashes
+                files = files.filter(f => {
+                    const normalizedFilePath = f.path.replace(/\\/g, '/');
+                    return normalizedFilePath.startsWith(normalizedRelPath + '/') ||
+                           normalizedFilePath === normalizedRelPath;
+                });
+
+                if (files.length === 0) {
+                    return {
+                        content: [{
+                            type: "text",
+                            text: `ℹ️ No files found in '${relativePath}' subdirectory.`
+                        }],
+                        isError: false
+                    };
+                }
+
+                // Adjust paths to be relative to the subdirectory
+                files = files.map(f => {
+                    const normalizedFilePath = f.path.replace(/\\/g, '/');
+                    if (normalizedFilePath.startsWith(normalizedRelPath + '/')) {
+                        return {
+                            ...f,
+                            path: normalizedFilePath.slice(normalizedRelPath.length + 1) // Remove prefix and leading slash
+                        };
+                    }
+                    // If the path equals normalizedRelPath (file at the subdirectory level)
+                    return f;
+                });
+            }
+
+            // Build tree structure
+            const tree = buildTreeFromPaths(files, relativePath);
+
+            // Calculate statistics
+            calculateStats(tree);
+
+            // Render tree
+            const renderOptions: RenderOptions = {
+                depth,
+                showFiles,
+                includeStats
+            };
+
+            let output: string;
+            if (format === 'list') {
+                output = renderList(tree, renderOptions);
+            } else {
+                output = renderTree(tree, renderOptions);
+            }
+
+            // Add header information
+            let headerText = `📁 Index Tree for: ${absolutePath}\n`;
+            if (relativePath) {
+                headerText += `📂 Subdirectory: ${relativePath}\n`;
+            }
+            if (isIndexing) {
+                const info = this.snapshotManager.getCodebaseInfo(absolutePath);
+                if (info && 'progress' in info) {
+                    headerText += `⚠️  Note: Indexing in progress (${Math.round((info as any).progress * 100)}%). Tree is partial.\n`;
+                }
+            }
+            headerText += `\n`;
+
+            return {
+                content: [{
+                    type: "text",
+                    text: headerText + output
+                }],
+                isError: false
+            };
+
+        } catch (error: any) {
+            const errorMessage = error?.message || String(error);
+            return {
+                content: [{
+                    type: "text",
+                    text: `❌ Error generating index tree: ${errorMessage}`
                 }],
                 isError: true
             };

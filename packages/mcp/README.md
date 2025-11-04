@@ -598,6 +598,7 @@ npx @zilliz/claude-context-mcp@latest
 - 🔌 **MCP Protocol Compliance**: Full compatibility with MCP-enabled AI assistants and agents
 - 🔍 **Hybrid Code Search**: Natural language queries using advanced hybrid search (BM25 + dense vector) to find relevant code snippets
 - 📁 **Codebase Indexing**: Index entire codebases for fast hybrid search across millions of lines of code
+- 🌳 **Index Tree Viewer**: Visualize indexed directory structure with file and chunk statistics (NEW in v0.3.0)
 - 🔄 **Incremental Indexing**: Efficiently re-index only changed files using Merkle trees for auto-sync
 - 🧩 **Intelligent Code Chunking**: AST-based code analysis for syntax-aware chunking with automatic fallback
 - 🗄️ **Scalable**: Integrates with Zilliz Cloud for scalable vector search, no matter how large your codebase is
@@ -674,6 +675,70 @@ Get the current indexing status of a codebase. Shows progress percentage for act
 **Parameters:**
 
 - `path` (required): Absolute path to the codebase directory to check status for
+
+### 5. `get_index_tree`
+
+**NEW in v0.3.0**: View the directory tree structure of an indexed codebase with file and chunk statistics.
+
+Shows only indexed files (not filesystem) in a tree or list format. Useful for understanding codebase structure, verifying what's been indexed, and navigating to specific areas of the codebase.
+
+**Parameters:**
+
+- `path` (required): Absolute path to the indexed codebase directory
+- `relative_path` (optional): Show tree starting from this subdirectory (e.g., 'src/components')
+- `depth` (optional): Maximum depth to show (default: 3, -1 = unlimited)
+- `format` (optional): Output format - 'tree' or 'list' (default: 'tree')
+- `show_files` (optional): Show individual files or just directories (default: true)
+- `include_stats` (optional): Include file and chunk counts (default: true)
+
+**Examples:**
+
+```javascript
+// Basic tree view (default depth=3)
+{ "path": "/home/user/my-project" }
+// Output:
+// /home/user/my-project/ [1,234 files, 8,952 chunks]
+// ├── src/ [856 files, 6,234 chunks]
+// │   ├── components/ [234 files, 1,892 chunks]
+// │   ├── utils/ [122 files, 892 chunks]
+// │   └── types/ [45 files, 234 chunks]
+// └── tests/ [234 files, 1,456 chunks]
+
+// Focus on a specific subdirectory
+{ "path": "/home/user/my-project", "relative_path": "src/components" }
+// Shows only the src/components subtree
+
+// List format for easy parsing
+{ "path": "/home/user/my-project", "format": "list", "depth": 2 }
+// Output:
+// src/ [856 files, 6,234 chunks]
+// src/components/ [234 files, 1,892 chunks]
+// src/utils/ [122 files, 892 chunks]
+// tests/ [234 files, 1,456 chunks]
+
+// Directories only (no individual files)
+{ "path": "/home/user/my-project", "show_files": false }
+// Shows directory structure without listing individual files
+
+// Unlimited depth
+{ "path": "/home/user/my-project", "depth": -1 }
+// Shows complete tree structure (use carefully on large codebases)
+```
+
+**Use Cases:**
+
+- **Verify indexing**: Quickly see what files have been indexed
+- **Navigate codebase**: Understand directory structure before searching
+- **Focus exploration**: Use `relative_path` to zoom into specific areas
+- **Integration**: Use `format: "list"` for programmatic processing
+- **Architecture overview**: Use `show_files: false` for high-level structure
+
+**Performance Notes:**
+
+- Fast metadata-only query (no content loading)
+- Default `depth: 3` keeps output concise
+- Use `relative_path` to reduce output for large codebases
+- List format is more token-efficient than tree format
 
 ## Contributing
 

@@ -233,6 +233,45 @@ This tool is versatile and can be used before completing various tasks to retrie
                         }
                     },
                     {
+                        name: "get_index_tree",
+                        description: `View the directory tree structure of an indexed codebase with file and chunk statistics. Shows only indexed files (not filesystem). Use relative_path to focus on a specific subdirectory.`,
+                        inputSchema: {
+                            type: "object",
+                            properties: {
+                                path: {
+                                    type: "string",
+                                    description: "ABSOLUTE path to the indexed codebase"
+                                },
+                                relative_path: {
+                                    type: "string",
+                                    description: "Optional: Show tree starting from this subdirectory (e.g., 'src/components')"
+                                },
+                                depth: {
+                                    type: "number",
+                                    description: "Maximum depth to show (default: 3, -1 = unlimited)",
+                                    default: 3
+                                },
+                                show_files: {
+                                    type: "boolean",
+                                    description: "Show files or just directories (default: true)",
+                                    default: true
+                                },
+                                format: {
+                                    type: "string",
+                                    enum: ["tree", "list"],
+                                    description: "Output format (default: 'tree')",
+                                    default: "tree"
+                                },
+                                include_stats: {
+                                    type: "boolean",
+                                    description: "Include file and chunk counts (default: true)",
+                                    default: true
+                                }
+                            },
+                            required: ["path"]
+                        }
+                    },
+                    {
                         name: "enable_realtime_sync",
                         description: `Enable real-time filesystem sync for an indexed codebase. This will automatically update the search index when files are added, changed, or deleted.`,
                         inputSchema: {
@@ -367,6 +406,8 @@ This tool is versatile and can be used before completing various tasks to retrie
                     return await this.toolHandlers.handleClearIndex(args);
                 case "get_indexing_status":
                     return await this.toolHandlers.handleGetIndexingStatus(args);
+                case "get_index_tree":
+                    return await this.toolHandlers.handleGetIndexTree(args);
                 case "enable_realtime_sync":
                     return await this.toolHandlers.handleEnableRealtimeSync(args);
                 case "disable_realtime_sync":

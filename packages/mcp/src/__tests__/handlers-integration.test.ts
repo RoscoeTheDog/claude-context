@@ -607,3 +607,222 @@ describe('handleIndexCodebase Integration Tests', () => {
         });
     });
 });
+
+/**
+ * Integration tests for handleGetIndexTree
+ * Phase 2, Task 2.6
+ */
+describe('handleGetIndexTree Integration Tests', () => {
+    let toolHandlers: ToolHandlers;
+    let mockContext: any;
+    let mockSnapshotManager: any;
+    let tempDir: string;
+    let testProjectRoot: string;
+
+    beforeEach(async () => {
+        // Create temporary directory
+        tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-context-tree-test-'));
+        testProjectRoot = path.join(tempDir, 'project');
+        fs.mkdirSync(testProjectRoot, { recursive: true });
+
+        // Create mock Context with semanticSearch
+        mockContext = {
+            semanticSearch: vi.fn().mockResolvedValue([
+                { relativePath: 'src/index.ts', chunkCount: 5 },
+                { relativePath: 'src/utils/date.ts', chunkCount: 3 },
+                { relativePath: 'src/utils/string.ts', chunkCount: 2 },
+                { relativePath: 'src/components/Button.tsx', chunkCount: 12 },
+                { relativePath: 'src/components/Modal.tsx', chunkCount: 8 },
+                { relativePath: 'tests/index.test.ts', chunkCount: 4 }
+            ])
+        };
+
+        // Create mock SnapshotManager
+        mockSnapshotManager = {
+            getIndexedCodebases: vi.fn().mockReturnValue([testProjectRoot]),
+            getIndexingCodebases: vi.fn().mockReturnValue([]),
+            getCodebaseInfo: vi.fn().mockReturnValue({
+                path: testProjectRoot,
+                status: 'indexed'
+            })
+        };
+
+        toolHandlers = new ToolHandlers(mockContext as Context, mockSnapshotManager as SnapshotManager);
+    });
+
+    afterEach(() => {
+        if (fs.existsSync(tempDir)) {
+            fs.rmSync(tempDir, { recursive: true, force: true });
+        }
+        vi.restoreAllMocks();
+    });
+
+    describe('Tree Format Tests', () => {
+        it('should return tree structure for indexed codebase', async () => {
+            const response = await toolHandlers.handleGetIndexTree({
+                path: testProjectRoot,
+                depth: 3,
+                format: 'tree'
+            });
+
+            expect(response.isError).toBeFalsy();
+            expect(response.content[0].text).toContain('📁 Index Tree for:');
+            expect(response.content[0].text).toContain('src/');
+            expect(response.content[0].text).toContain('utils/');
+            expect(response.content[0].text).toContain('components/');
+            expect(response.content[0].text).toContain('tests/');
+        });
+
+        it('should include file and chunk statistics', async () => {
+            const response = await toolHandlers.handleGetIndexTree({
+                path: testProjectRoot,
+                depth: 3,
+                include_stats: true
+            });
+
+            expect(response.content[0].text).toContain('files');
+            expect(response.content[0].text).toContain('chunks');
+        });
+
+        it('should respect depth parameter', async () => {
+            const response = await toolHandlers.handleGetIndexTree({
+                path: testProjectRoot,
+                depth: 1
+            });
+
+            expect(response.content[0].text).toContain('src/');
+            expect(response.content[0].text).toContain('tests/');
+            // Shouldn't show nested directories at depth > 1
+            expect(response.content[0].text).not.toContain('utils/');
+            expect(response.content[0].text).not.toContain('components/');
+        });
+
+        it('should hide files when show_files is false', async () => {
+            const response = await toolHandlers.handleGetIndexTree({
+                path: testProjectRoot,
+                depth: 3,
+                show_files: false
+            });
+
+            expect(response.content[0].text).toContain('src/');
+            expect(response.content[0].text).toContain('utils/');
+            expect(response.content[0].text).toContain('components/');
+            expect(response.content[0].text).not.toContain('index.ts');
+            expect(response.content[0].text).not.toContain('Button.tsx');
+        });
+    });
+
+    describe('List Format Tests', () => {
+        it('should return list format when requested', async () => {
+            const response = await toolHandlers.handleGetIndexTree({
+                path: testProjectRoot,
+                format: 'list',
+                depth: 3
+            });
+
+            expect(response.isError).toBeFalsy();
+            const text = response.content[0].text;
+
+            // List format has paths on separate lines
+            expect(text).toContain('/src/');
+            expect(text).toContain('/src/utils/');
+            expect(text).toContain('/src/components/');
+
+            // Should not have box-drawing characters
+            expect(text).not.toMatch(/[├└│]/);
+        });
+    });
+
+    describe('Relative Path Filtering Tests', () => {
+        it('should filter to subdirectory with relative_path', async () => {
+            const response = await toolHandlers.handleGetIndexTree({
+                path: testProjectRoot,
+                relative_path: 'src/components',
+                depth: 2
+            });
+
+            expect(response.content[0].text).toContain('📂 Subdirectory: src/components');
+            expect(response.content[0].text).toContain('Button.tsx');
+            expect(response.content[0].text).toContain('Modal.tsx');
+            // Should not include files outside the subdirectory
+            expect(response.content[0].text).not.toContain('utils/');
+            expect(response.content[0].text).not.toContain('tests/');
+        });
+
+        it('should handle empty subdirectory gracefully', async () => {
+            const response = await toolHandlers.handleGetIndexTree({
+                path: testProjectRoot,
+                relative_path: 'nonexistent/path',
+                depth: 3
+            });
+
+            expect(response.isError).toBe(false);
+            expect(response.content[0].text).toContain('No files found');
+        });
+
+        it('should handle Windows path separators in relative_path', async () => {
+            const response = await toolHandlers.handleGetIndexTree({
+                path: testProjectRoot,
+                relative_path: 'src\\components',
+                depth: 2
+            });
+
+            expect(response.content[0].text).toContain('Button.tsx');
+            expect(response.content[0].text).toContain('Modal.tsx');
+        });
+    });
+
+    describe('Error Handling Tests', () => {
+        it('should return error for non-indexed codebase', async () => {
+            mockSnapshotManager.getIndexedCodebases.mockReturnValue([]);
+            mockSnapshotManager.getIndexingCodebases.mockReturnValue([]);
+
+            const response = await toolHandlers.handleGetIndexTree({
+                path: testProjectRoot
+            });
+
+            expect(response.isError).toBe(true);
+            expect(response.content[0].text).toContain('not indexed');
+        });
+
+        it('should return error for non-existent path', async () => {
+            const nonExistentPath = path.join(tempDir, 'nonexistent');
+
+            const response = await toolHandlers.handleGetIndexTree({
+                path: nonExistentPath
+            });
+
+            expect(response.isError).toBe(true);
+            expect(response.content[0].text).toContain('does not exist');
+        });
+
+        it('should handle empty index gracefully', async () => {
+            mockContext.semanticSearch.mockResolvedValue([]);
+
+            const response = await toolHandlers.handleGetIndexTree({
+                path: testProjectRoot
+            });
+
+            expect(response.isError).toBe(false);
+            expect(response.content[0].text).toContain('No files indexed');
+        });
+
+        it('should show warning for indexing in progress', async () => {
+            mockSnapshotManager.getIndexedCodebases.mockReturnValue([]);
+            mockSnapshotManager.getIndexingCodebases.mockReturnValue([testProjectRoot]);
+            mockSnapshotManager.getCodebaseInfo.mockReturnValue({
+                path: testProjectRoot,
+                status: 'indexing',
+                progress: 0.45
+            });
+
+            const response = await toolHandlers.handleGetIndexTree({
+                path: testProjectRoot
+            });
+
+            expect(response.isError).toBe(false);
+            expect(response.content[0].text).toContain('Indexing in progress');
+            expect(response.content[0].text).toContain('45%');
+        });
+    });
+});

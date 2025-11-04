@@ -78,3 +78,7 @@ repos
 evaluation/retrieval_results*
 .venv/
 CLAUDE_INIT.md
+
+# Generated Claude MCP Installer Documentation (platform-specific)
+claude-mcp-installer/instance/
+.mcp-cache

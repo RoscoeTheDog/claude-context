@@ -23,6 +23,7 @@ import * as path from 'path';
 import * as crypto from 'crypto';
 import { FileSynchronizer } from './sync/synchronizer';
 import { FileSystemWatcher } from './sync/file-watcher';
+import { CodebaseConfigManager } from './config/codebase-config';
 
 const DEFAULT_SUPPORTED_EXTENSIONS = [
     // Programming languages
@@ -34,58 +35,10 @@ const DEFAULT_SUPPORTED_EXTENSIONS = [
     // '.css', '.scss', '.less', '.sql', '.sh', '.bash', '.env'
 ];
 
-const DEFAULT_IGNORE_PATTERNS = [
-    // Common build output and dependency directories
-    'node_modules/**',
-    'dist/**',
-    'build/**',
-    'out/**',
-    'target/**',
-    'coverage/**',
-    '.nyc_output/**',
-
-    // IDE and editor files
-    '.vscode/**',
-    '.idea/**',
-    '*.swp',
-    '*.swo',
-
-    // Version control
-    '.git/**',
-    '.svn/**',
-    '.hg/**',
-
-    // Cache directories
-    '.cache/**',
-    '__pycache__/**',
-    '.pytest_cache/**',
-
-    // Logs and temporary files
-    'logs/**',
-    'tmp/**',
-    'temp/**',
-    '*.log',
-
-    // Environment and config files
-    '.env',
-    '.env.*',
-    '*.local',
-
-    // Minified and bundled files
-    '*.min.js',
-    '*.min.css',
-    '*.min.map',
-    '*.bundle.js',
-    '*.bundle.css',
-    '*.chunk.js',
-    '*.vendor.js',
-    '*.polyfills.js',
-    '*.runtime.js',
-    '*.map', // source map files
-    'node_modules', '.git', '.svn', '.hg', 'build', 'dist', 'out',
-    'target', '.vscode', '.idea', '__pycache__', '.pytest_cache',
-    'coverage', '.nyc_output', 'logs', 'tmp', 'temp'
-];
+// REMOVED: DEFAULT_IGNORE_PATTERNS - now configured per-codebase
+// Use update_codebase_config MCP tool to set ignore patterns for specific codebases
+// By default, all files are indexed for complete search accuracy
+const DEFAULT_IGNORE_PATTERNS: string[] = [];
 
 export interface ContextConfig {
     embedding?: Embedding;
@@ -105,6 +58,7 @@ export class Context {
     private ignorePatterns: string[];
     private synchronizers = new Map<string, FileSynchronizer>();
     private fileWatchers = new Map<string, FileSystemWatcher>();
+    private configManager: CodebaseConfigManager;
 
     constructor(config: ContextConfig = {}) {
         // Initialize services
@@ -121,6 +75,9 @@ export class Context {
 
         this.codeSplitter = config.codeSplitter || new AstCodeSplitter(2500, 300);
 
+        // Initialize codebase configuration manager
+        this.configManager = new CodebaseConfigManager(this.vectorDatabase.getClient());
+
         // Load custom extensions from environment variables
         const envCustomExtensions = this.getCustomExtensionsFromEnv();
 
@@ -134,15 +91,14 @@ export class Context {
         // Remove duplicates
         this.supportedExtensions = [...new Set(allSupportedExtensions)];
 
-        // Load custom ignore patterns from environment variables  
-        const envCustomIgnorePatterns = this.getCustomIgnorePatternsFromEnv();
+        // REMOVED: Environment variable loading for ignore patterns
+        // Now use per-codebase configuration via update_codebase_config MCP tool
 
-        // Start with default ignore patterns
+        // Start with empty ignore patterns by default (index everything)
         const allIgnorePatterns = [
-            ...DEFAULT_IGNORE_PATTERNS,
+            ...DEFAULT_IGNORE_PATTERNS,  // Now empty by default
             ...(config.ignorePatterns || []),
-            ...(config.customIgnorePatterns || []),
-            ...envCustomIgnorePatterns
+            ...(config.customIgnorePatterns || [])
         ];
         // Remove duplicates
         this.ignorePatterns = [...new Set(allIgnorePatterns)];
@@ -151,9 +107,7 @@ export class Context {
         if (envCustomExtensions.length > 0) {
             console.log(`[Context] 📎 Loaded ${envCustomExtensions.length} custom extensions from environment: ${envCustomExtensions.join(', ')}`);
         }
-        if (envCustomIgnorePatterns.length > 0) {
-            console.log(`[Context] 🚫 Loaded ${envCustomIgnorePatterns.length} custom ignore patterns from environment: ${envCustomIgnorePatterns.join(', ')}`);
-        }
+        // REMOVED: Environment-based ignore patterns logging
     }
 
     /**
@@ -189,6 +143,21 @@ export class Context {
      */
     getIgnorePatterns(): string[] {
         return [...this.ignorePatterns];
+    }
+
+    /**
+     * Get config manager instance
+     */
+    getConfigManager(): CodebaseConfigManager {
+        return this.configManager;
+    }
+
+    /**
+     * Initialize the context (async initialization for config manager)
+     */
+    async initialize(): Promise<void> {
+        await this.configManager.initialize();
+        console.log('[Context] ✅ Configuration manager initialized');
     }
 
     /**
@@ -1130,23 +1099,30 @@ export class Context {
         try {
             let fileBasedPatterns: string[] = [];
 
-            // Load all .xxxignore files in codebase directory
+            // 1. Load from database-stored codebase config (highest priority)
+            const config = await this.configManager.getConfig(codebasePath);
+            if (config.ignorePatterns.length > 0) {
+                fileBasedPatterns.push(...config.ignorePatterns);
+                console.log(`[Context] 🔧 Loaded ${config.ignorePatterns.length} ignore patterns from codebase config`);
+            }
+
+            // 2. Load all .xxxignore files in codebase directory
             const ignoreFiles = await this.findIgnoreFiles(codebasePath);
             for (const ignoreFile of ignoreFiles) {
                 const patterns = await this.loadIgnoreFile(ignoreFile, path.basename(ignoreFile));
                 fileBasedPatterns.push(...patterns);
             }
 
-            // Load global ~/.context/.contextignore
+            // 3. Load global ~/.context/.contextignore
             const globalIgnorePatterns = await this.loadGlobalIgnoreFile();
             fileBasedPatterns.push(...globalIgnorePatterns);
 
             // Merge file-based patterns with existing patterns (which may include custom MCP patterns)
             if (fileBasedPatterns.length > 0) {
                 this.addCustomIgnorePatterns(fileBasedPatterns);
-                console.log(`[Context] 🚫 Loaded total ${fileBasedPatterns.length} ignore patterns from all ignore files`);
+                console.log(`[Context] 🚫 Loaded total ${fileBasedPatterns.length} ignore patterns from all sources`);
             } else {
-                console.log('📄 No ignore files found, keeping existing patterns');
+                console.log('📄 No ignore patterns found, indexing all files');
             }
         } catch (error) {
             console.warn(`[Context] ⚠️ Failed to load ignore patterns: ${error}`);
@@ -1315,29 +1291,8 @@ export class Context {
         }
     }
 
-    /**
-     * Get custom ignore patterns from environment variables  
-     * Supports CUSTOM_IGNORE_PATTERNS as comma-separated list
-     * @returns Array of custom ignore patterns
-     */
-    private getCustomIgnorePatternsFromEnv(): string[] {
-        const envIgnorePatterns = envManager.get('CUSTOM_IGNORE_PATTERNS');
-        if (!envIgnorePatterns) {
-            return [];
-        }
-
-        try {
-            const patterns = envIgnorePatterns
-                .split(',')
-                .map(pattern => pattern.trim())
-                .filter(pattern => pattern.length > 0);
-
-            return patterns;
-        } catch (error) {
-            console.warn(`[Context] ⚠️  Failed to parse CUSTOM_IGNORE_PATTERNS: ${error}`);
-            return [];
-        }
-    }
+    // REMOVED: getCustomIgnorePatternsFromEnv() method
+    // Environment variable configuration has been replaced with per-codebase database configuration
 
     /**
      * Add custom extensions (from MCP or other sources) without replacing existing ones

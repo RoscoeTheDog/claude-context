@@ -131,6 +131,12 @@ export interface VectorDatabase {
      * Returns true if collection can be created, false if limit exceeded
      */
     checkCollectionLimit(): Promise<boolean>;
+
+
+    /**
+     * Get the underlying Milvus client for advanced operations
+     */
+    getClient(): any;
 }
 
 /**

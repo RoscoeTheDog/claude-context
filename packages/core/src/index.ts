@@ -6,3 +6,4 @@ export * from './context';
 export * from './sync/synchronizer';
 export * from './sync/file-watcher';
 export * from './utils';
+export * from './config/codebase-config';

@@ -389,6 +389,83 @@ This tool is versatile and can be used before completing various tasks to retrie
                             required: []
                         }
                     },
+                    {
+                        name: "get_codebase_config",
+                        description: "Get the current configuration for a specific indexed codebase. Returns ignore patterns, file size limits, and other indexing settings.",
+                        inputSchema: {
+                            type: "object",
+                            properties: {
+                                path: {
+                                    type: "string",
+                                    description: "Absolute path to the codebase"
+                                }
+                            },
+                            required: ["path"]
+                        }
+                    },
+                    {
+                        name: "update_codebase_config",
+                        description: "Update configuration for a specific codebase. All parameters are optional - only provided values will be updated. Configuration is stored in the database and persists across sessions.",
+                        inputSchema: {
+                            type: "object",
+                            properties: {
+                                path: {
+                                    type: "string",
+                                    description: "Absolute path to the codebase"
+                                },
+                                ignorePatterns: {
+                                    type: "array",
+                                    items: { type: "string" },
+                                    description: "Patterns to ignore during indexing (e.g., ['node_modules/**', '*.log']). Enables performance optimization when set."
+                                },
+                                maxFileSize: {
+                                    type: "number",
+                                    description: "Maximum file size to index in bytes (default: 10MB)"
+                                },
+                                fileExtensions: {
+                                    type: "array",
+                                    items: { type: "string" },
+                                    description: "Only index files with these extensions (e.g., ['.ts', '.js']). Empty array = all extensions."
+                                },
+                                followSymlinks: {
+                                    type: "boolean",
+                                    description: "Follow symbolic links during indexing (default: false)"
+                                },
+                                indexHiddenFiles: {
+                                    type: "boolean",
+                                    description: "Index hidden files starting with . (default: true)"
+                                },
+                                indexBinaryFiles: {
+                                    type: "boolean",
+                                    description: "Attempt to index binary files (default: false)"
+                                }
+                            },
+                            required: ["path"]
+                        }
+                    },
+                    {
+                        name: "reset_codebase_config",
+                        description: "Reset configuration to defaults for a specific codebase. This removes all custom ignore patterns and restores default settings (index everything).",
+                        inputSchema: {
+                            type: "object",
+                            properties: {
+                                path: {
+                                    type: "string",
+                                    description: "Absolute path to the codebase"
+                                }
+                            },
+                            required: ["path"]
+                        }
+                    },
+                    {
+                        name: "list_codebase_configs",
+                        description: "List all codebases that have custom configurations stored in the database.",
+                        inputSchema: {
+                            type: "object",
+                            properties: {},
+                            required: []
+                        }
+                    }
                 ]
             };
         });
@@ -424,6 +501,14 @@ This tool is versatile and can be used before completing various tasks to retrie
                     return await this.toolHandlers.handleHealthCheck(args);
                 case "get_sync_history":
                     return await this.toolHandlers.handleGetSyncHistory(args);
+                case "get_codebase_config":
+                    return await this.toolHandlers.handleGetCodebaseConfig(args as any);
+                case "update_codebase_config":
+                    return await this.toolHandlers.handleUpdateCodebaseConfig(args as any);
+                case "reset_codebase_config":
+                    return await this.toolHandlers.handleResetCodebaseConfig(args as any);
+                case "list_codebase_configs":
+                    return await this.toolHandlers.handleListCodebaseConfigs();
 
                 default:
                     throw new Error(`Unknown tool: ${name}`);
@@ -434,6 +519,10 @@ This tool is versatile and can be used before completing various tasks to retrie
     async start() {
         console.log('[SYNC-DEBUG] MCP server start() method called');
         console.log('Starting Context MCP server...');
+
+        // Initialize context (including config manager)
+        await this.context.initialize();
+        console.log('[SYNC-DEBUG] Context initialized');
 
         const transport = new StdioServerTransport();
         console.log('[SYNC-DEBUG] StdioServerTransport created, attempting server connection...');

@@ -1859,4 +1859,131 @@ export class ToolHandlers {
             };
         }
     }
+
+
+    /**
+     * Get configuration for a specific codebase
+     */
+    async handleGetCodebaseConfig(args: { path: string }) {
+        try {
+            const absolutePath = path.resolve(args.path);
+            const configManager = this.context.getConfigManager();
+            const config = await configManager.getConfig(absolutePath);
+
+            return {
+                content: [{
+                    type: "text",
+                    text: `Configuration for: ${absolutePath}\n\n${JSON.stringify(config, null, 2)}`
+                }]
+            };
+        } catch (error: any) {
+            return {
+                content: [{
+                    type: "text",
+                    text: `Error getting config: ${error.message}`
+                }],
+                isError: true
+            };
+        }
+    }
+
+    /**
+     * Update configuration for a specific codebase
+     */
+    async handleUpdateCodebaseConfig(args: {
+        path: string,
+        ignorePatterns?: string[],
+        maxFileSize?: number,
+        fileExtensions?: string[],
+        followSymlinks?: boolean,
+        indexHiddenFiles?: boolean,
+        indexBinaryFiles?: boolean
+    }) {
+        try {
+            const { path: codebasePath, ...updates } = args;
+            const absolutePath = path.resolve(codebasePath);
+            const configManager = this.context.getConfigManager();
+
+            const newConfig = await configManager.updateConfig(absolutePath, updates);
+
+            return {
+                content: [{
+                    type: "text",
+                    text: `✅ Configuration updated for: ${absolutePath}\n\n${JSON.stringify(newConfig, null, 2)}\n\n💡 Tip: Run sync_now to apply changes to existing index.`
+                }]
+            };
+        } catch (error: any) {
+            return {
+                content: [{
+                    type: "text",
+                    text: `Error updating config: ${error.message}`
+                }],
+                isError: true
+            };
+        }
+    }
+
+    /**
+     * Reset configuration to defaults
+     */
+    async handleResetCodebaseConfig(args: { path: string }) {
+        try {
+            const absolutePath = path.resolve(args.path);
+            const configManager = this.context.getConfigManager();
+            const config = await configManager.resetConfig(absolutePath);
+
+            return {
+                content: [{
+                    type: "text",
+                    text: `✅ Configuration reset to defaults for: ${absolutePath}\n\n${JSON.stringify(config, null, 2)}`
+                }]
+            };
+        } catch (error: any) {
+            return {
+                content: [{
+                    type: "text",
+                    text: `Error resetting config: ${error.message}`
+                }],
+                isError: true
+            };
+        }
+    }
+
+    /**
+     * List all configured codebases
+     */
+    async handleListCodebaseConfigs() {
+        try {
+            const configManager = this.context.getConfigManager();
+            const configs = await configManager.listConfigs();
+
+            if (configs.length === 0) {
+                return {
+                    content: [{
+                        type: "text",
+                        text: "No codebases have custom configurations.\n\nAll codebases are using default settings (index everything)."
+                    }]
+                };
+            }
+
+            const output = configs.map((c, i) =>
+                `${i + 1}. ${c.path}\n   Ignore patterns: ${c.config.ignorePatterns.length}\n   Patterns: ${c.config.ignorePatterns.slice(0, 3).join(', ')}${c.config.ignorePatterns.length > 3 ? '...' : ''}`
+            ).join('\n\n');
+
+            return {
+                content: [{
+                    type: "text",
+                    text: `Configured Codebases (${configs.length}):\n\n${output}`
+                }]
+            };
+        } catch (error: any) {
+            return {
+                content: [{
+                    type: "text",
+                    text: `Error listing configs: ${error.message}`
+                }],
+                isError: true
+            };
+        }
+    }
 } 

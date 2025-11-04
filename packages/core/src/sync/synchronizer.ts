@@ -88,40 +88,46 @@ export class FileSynchronizer {
             const fullPath = path.join(dir, entry.name);
             const relativePath = path.relative(this.rootDir, fullPath);
 
-            // Check if this path should be ignored BEFORE any file system operations
-            if (this.shouldIgnore(relativePath, entry.isDirectory())) {
-                continue; // Skip completely - no access at all
-            }
-
-            // Double-check with fs.stat to be absolutely sure about file type
-            let stat;
-            try {
-                stat = await fs.stat(fullPath);
-            } catch (error: any) {
-                console.warn(`[Synchronizer] Cannot stat ${fullPath}: ${error.message}`);
-                continue;
-            }
-
-            if (stat.isDirectory()) {
-                // Verify it's really a directory and not ignored
-                if (!this.shouldIgnore(relativePath, true)) {
-                    const subHashes = await this.generateFileHashes(fullPath);
-                    const entries = Array.from(subHashes.entries());
-                    for (let i = 0; i < entries.length; i++) {
-                        const [p, h] = entries[i];
-                        fileHashes.set(p, h);
-                    }
+            // PERFORMANCE OPTIMIZATION: Early directory pruning
+            // This optimization skips ignored directories before traversing them
+            // Note: By default, ignorePatterns is empty (indexes everything)
+            // Use update_codebase_config MCP tool to enable directory pruning
+            if (entry.isDirectory()) {
+                // Check ignore status before recursing or calling fs.stat()
+                if (this.shouldIgnore(relativePath, true)) {
+                    console.log(`[Synchronizer] Skipping ignored directory: ${relativePath}`);
+                    continue; // Skip entirely - no stat, no recursion
                 }
-            } else if (stat.isFile()) {
-                // Verify it's really a file and not ignored
-                if (!this.shouldIgnore(relativePath, false)) {
-                    try {
-                        const hash = await this.hashFileOptimized(fullPath, relativePath);
-                        fileHashes.set(relativePath, hash);
-                    } catch (error: any) {
-                        console.warn(`[Synchronizer] Cannot hash file ${fullPath}: ${error.message}`);
-                        continue;
-                    }
+
+                // Only recurse into non-ignored directories
+                const subHashes = await this.generateFileHashes(fullPath);
+                const entries = Array.from(subHashes.entries());
+                for (let i = 0; i < entries.length; i++) {
+                    const [p, h] = entries[i];
+                    fileHashes.set(p, h);
+                }
+            } else if (entry.isFile()) {
+                // Check if file should be ignored before processing
+                if (this.shouldIgnore(relativePath, false)) {
+                    continue; // Skip ignored files
+                }
+
+                // Get file stats for hashing
+                let stat;
+                try {
+                    stat = await fs.stat(fullPath);
+                } catch (error: any) {
+                    console.warn(`[Synchronizer] Cannot stat ${fullPath}: ${error.message}`);
+                    continue;
+                }
+
+                // Hash the file
+                try {
+                    const hash = await this.hashFileOptimized(fullPath, relativePath);
+                    fileHashes.set(relativePath, hash);
+                } catch (error: any) {
+                    console.warn(`[Synchronizer] Cannot hash file ${fullPath}: ${error.message}`);
+                    continue;
                 }
             }
             // Skip other types (symlinks, etc.)

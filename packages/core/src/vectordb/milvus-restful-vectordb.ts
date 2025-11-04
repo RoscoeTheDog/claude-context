@@ -798,4 +798,14 @@ export class MilvusRestfulVectorDatabase implements VectorDatabase {
         console.warn('[MilvusRestfulDB] ⚠️  checkCollectionLimit not implemented for REST API - returning true');
         return true;
     }
+
+
+    /**
+     * Get the underlying client - not applicable for REST API
+     * Returns null as REST API doesn't use a persistent client
+     */
+    getClient(): any {
+        console.warn('[MilvusRestfulDB] ⚠️ getClient() not applicable for REST API implementation - returning null');
+        return null;
+    }
 }

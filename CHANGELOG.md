@@ -7,6 +7,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ⚠️ BREAKING CHANGES
+
+- **Removed DEFAULT_IGNORE_PATTERNS**: The system no longer ignores any directories by default
+  - **Previous behavior**: Automatically ignored `node_modules/**`, `.git/**`, `dist/**`, and ~40 other patterns
+  - **New behavior**: By default, ALL files and directories are indexed for complete search accuracy
+  - **Migration**: If you relied on default ignores, use MCP tools to configure per-codebase ignore patterns:
+    ```typescript
+    mcp__claude-context__update_codebase_config({
+      path: "/path/to/codebase",
+      ignorePatterns: ["node_modules/**", ".git/**", "dist/**"],
+      enableDirectoryPruning: true  // Enable performance optimization
+    })
+    ```
+
+- **Removed environment variable configuration**: `CUSTOM_IGNORE_PATTERNS` environment variable is no longer supported
+  - **Migration**: Use per-codebase configuration stored in the database instead (see above)
+
+### Added
+
+- **Per-Codebase Configuration System**: New database-backed configuration for indexed codebases
+  - **4 new MCP tools** for managing codebase-specific settings:
+    - `get_codebase_config` - View current configuration for a codebase
+    - `update_codebase_config` - Update configuration (supports partial updates)
+    - `reset_codebase_config` - Reset configuration to defaults
+    - `list_codebase_configs` - List all configured codebases
+  - **Storage**: Configurations stored in Milvus database (no filesystem pollution)
+  - **Persistent**: Settings survive across sessions
+  - **Per-codebase**: Each indexed codebase has independent configuration
+  - **Configurable options**:
+    - `ignorePatterns` - Patterns to exclude during indexing
+    - `maxFileSize` - Maximum file size to index (default: 10MB)
+    - `fileExtensions` - Only index specific extensions (empty = all)
+    - `followSymlinks` - Follow symbolic links (default: false)
+    - `indexHiddenFiles` - Index hidden files (default: true)
+    - `indexBinaryFiles` - Attempt to index binary files (default: false)
+
+- **Performance optimization (opt-in)**: Early directory pruning for faster sync operations
+  - Available when `ignorePatterns` are configured for a codebase
+  - Skips ignored directories before traversing them
+  - Can reduce sync time by 90-95% on large codebases with node_modules
+  - **Default**: Disabled (indexes everything for accuracy)
+  - **To enable**: Configure ignore patterns via `update_codebase_config`
+
+### Changed
+
+- **Default indexing behavior**: Now indexes ALL files by default (including node_modules, .git, etc.)
+  - Prioritizes search completeness over performance
+  - Users can opt-in to performance optimizations via per-codebase configuration
+  - Configuration system now available for easy management of indexing behavior
+
+### Technical Details
+- Added `CodebaseConfigManager` class for database-backed configuration storage
+- Implemented `getClient()` method in `VectorDatabase` interface and implementations
+- Added `Context.initialize()` async method for config manager setup
+- Modified `Context.loadIgnorePatterns()` to load from database config first
+- Added 4 new MCP tool handlers in `ToolHandlers` class
+- Registered 4 new MCP tools in server tool list
+- Removed `DEFAULT_IGNORE_PATTERNS` constant from context.ts
+- Removed `getCustomIgnorePatternsFromEnv()` method
+- Modified `FileSynchronizer.generateFileHashes()` to support early directory pruning
+- Added comments clarifying opt-in nature of optimization
+
 ## [0.3.0] - 2025-11-04
 
 ### Added

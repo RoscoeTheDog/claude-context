@@ -14,7 +14,9 @@ Final Files = (All Supported Extensions) - (All Ignore Patterns)
 
 Where:
 - **All Supported Extensions** = Default + MCP Custom + Environment Variable Extensions
-- **All Ignore Patterns** = Default + MCP Custom + Environment Variable + .gitignore + .xxxignore + Global .contextignore
+- **All Ignore Patterns** = MCP Custom + .gitignore + .xxxignore + Global .contextignore
+
+**⚠️ IMPORTANT**: As of v0.4.0, there are NO default ignore patterns. By default, ALL files are indexed for complete search accuracy. Users must explicitly configure ignore patterns if desired.
 
 ## File Inclusion Flow
 
@@ -57,17 +59,14 @@ See [Environment Variables](../getting-started/environment-variables.md) for mor
 
 All ignore pattern sources are combined together:
 
-### 1. Default Ignore Patterns
-Built-in patterns for common files/directories to exclude:
-- **Build outputs**: `node_modules/**`, `dist/**`, `build/**`, `out/**`, `target/**`, `coverage/**`, `.nyc_output/**`
-- **IDE files**: `.vscode/**`, `.idea/**`, `*.swp`, `*.swo`
-- **Version control**: `.git/**`, `.svn/**`, `.hg/**`
-- **Cache directories**: `.cache/**`, `__pycache__/**`, `.pytest_cache/**`
-- **Logs and temporary**: `logs/**`, `tmp/**`, `temp/**`, `*.log`
-- **Environment files**: `.env`, `.env.*`, `*.local`
-- **Minified files**: `*.min.js`, `*.min.css`, `*.min.map`, `*.bundle.js`, `*.bundle.css`, `*.chunk.js`, `*.vendor.js`, `*.polyfills.js`, `*.runtime.js`, `*.map`
+### 1. ~~Default Ignore Patterns~~ (REMOVED in v0.4.0)
 
-For more details, see [DEFAULT_IGNORE_PATTERNS](../../packages/core/src/context.ts) in the context.ts file.
+**⚠️ BREAKING CHANGE**: As of v0.4.0, there are NO default ignore patterns.
+
+- **Previous behavior** (v0.3.0 and earlier): Automatically ignored `node_modules/**`, `.git/**`, `dist/**`, and ~40 other patterns
+- **New behavior** (v0.4.0+): By default, ALL files and directories are indexed for complete search accuracy
+- **Why changed**: Prioritizes search completeness and accuracy over performance
+- **Migration**: Configure ignore patterns explicitly using MCP tools (see below)
 
 ### 2. MCP Custom Ignore Patterns
 Additional patterns passed dynamically via MCP `ignorePatterns` parameter:
@@ -81,12 +80,12 @@ Just dynamically tell the agent what patterns you want to exclude to invoke this
 "Index this codebase, and exclude temp/**, *.backup, private/** files"
 ```
 
-### 3. Environment Variable Ignore Patterns
-Patterns from `CUSTOM_IGNORE_PATTERNS` environment variable:
-```bash
-export CUSTOM_IGNORE_PATTERNS="temp/**,*.backup,private/**"
-```
-See [Environment Variables](../getting-started/environment-variables.md) for more details about how to set environment variables.
+### 3. ~~Environment Variable Ignore Patterns~~ (REMOVED in v0.4.0)
+
+**⚠️ BREAKING CHANGE**: The `CUSTOM_IGNORE_PATTERNS` environment variable is no longer supported as of v0.4.0.
+
+- **Migration**: Use per-codebase configuration stored in the database instead (coming in future release)
+- **Current workaround**: Pass `ignorePatterns` via MCP parameters directly
 
 ### 4. .gitignore Files
 Standard Git ignore patterns in codebase root.

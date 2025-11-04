@@ -1124,4 +1124,15 @@ export class MilvusVectorDatabase implements VectorDatabase {
             throw error;
         }
     }
+
+
+    /**
+     * Get the underlying Milvus client for advanced operations
+     */
+    getClient(): MilvusClient {
+        if (!this.client) {
+            throw new Error('Milvus client not initialized. Call ensureInitialized() first.');
+        }
+        return this.client;
+    }
 }

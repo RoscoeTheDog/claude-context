@@ -6,6 +6,7 @@ import { SnapshotManager } from "./snapshot.js";
 import { ensureAbsolutePath, truncateContent, trackCodebasePath, findParentIndex } from "./utils.js";
 import { buildTreeFromPaths, calculateStats, renderTree, renderList, type FileInfo, type RenderOptions } from "./tree-builder.js";
 import { getAllFeatureFlags, getFeatureFlagsSummary } from "./config/feature-flags.js";
+import { formatSearchResults, type DetailLevel } from "./formatters/index.js";
 
 export class ToolHandlers {
     private context: Context;
@@ -634,8 +635,9 @@ export class ToolHandlers {
     }
 
     public async handleSearchCode(args: any) {
-        const { path: codebasePath, query, limit = 10, extensionFilter } = args;
+        const { path: codebasePath, query, limit = 10, detail, extensionFilter } = args;
         const resultLimit = limit || 10;
+        const detailLevel: DetailLevel | undefined = detail;
 
         try {
             // Sync indexed codebases from cloud first
@@ -767,23 +769,14 @@ export class ToolHandlers {
                 };
             }
 
-            // Format results
-            const formattedResults = searchResults.map((result: any, index: number) => {
-                const location = `${result.relativePath}:${result.startLine}-${result.endLine}`;
-                const context = truncateContent(result.content, 5000);
-                const codebaseInfo = path.basename(absolutePath);
-
-                return `${index + 1}. Code snippet (${result.language}) [${codebaseInfo}]\n` +
-                    `   Location: ${location}\n` +
-                    `   Rank: ${index + 1}\n` +
-                    `   Context: \n\`\`\`${result.language}\n${context}\n\`\`\`\n`;
-            }).join('\n');
-
-            let resultMessage = `Found ${searchResults.length} results for query: "${query}" in codebase '${absolutePath}'${indexingStatusMessage}\n\n${formattedResults}`;
-
-            if (isIndexing) {
-                resultMessage += `\n\n💡 **Tip**: This codebase is still being indexed. More results may become available as indexing progresses.`;
-            }
+            // Format results using the smart formatter with auto-detection
+            const resultMessage = formatSearchResults(
+                searchResults,
+                absolutePath,
+                query,
+                isIndexing,
+                detailLevel
+            );
 
             return {
                 content: [{

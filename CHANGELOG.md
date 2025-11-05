@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Smart Adaptive Search Results (v0.5.0 Story 1)**: Automatic token optimization for `search_code` MCP tool
+  - **Zero-thought token savings**: Automatically adapts result format based on result count (no agent configuration required)
+  - **Progressive detail levels** with auto-detection thresholds:
+    - **1-3 results**: Full detail with code snippets (0% savings, baseline)
+    - **4-10 results**: Compact format with truncated code (~50% token reduction)
+    - **11-25 results**: Summary format with descriptions only (~75% token reduction)
+    - **26+ results**: Locations only with file paths (~90% token reduction)
+  - **Power user overrides**: Optional `detail` parameter to force specific format (`full`, `compact`, `summary`, `locations`)
+  - **Self-documenting tool schema**: Enhanced MCP tool description with USE WHEN/DON'T USE guidance and progressive examples
+  - **Backward compatible**: Existing calls work unchanged, all features opt-in via `CC_SMART_RESULTS=true`
+  - **Implementation**: New `formatters/` module with 4 specialized formatters + auto-detection orchestrator
+  - **Comprehensive testing**: 35 unit tests covering auto-detection, formatters, token efficiency, and feature flags
+
 - **Feature Flag Infrastructure (v0.5.0)**: Centralized system for controlling optional token efficiency enhancements
   - **2 feature flags** with environment variable support:
     - `CC_SMART_RESULTS` - Smart adaptive search results (40-70% token reduction, Story 1)

@@ -6,6 +6,7 @@ export default defineConfig({
         globals: true,
         environment: 'node',
         include: ['src/**/*.test.ts'],
+        setupFiles: ['src/__tests__/setup.ts'], // Enable feature flags
         unstubGlobals: true, // Allow mocking of Node.js globals
         unstubEnvs: true,
         coverage: {

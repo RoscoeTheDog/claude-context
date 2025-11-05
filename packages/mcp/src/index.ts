@@ -101,24 +101,32 @@ Index a codebase directory to enable semantic search using a configurable code s
 
 
         const search_description = `
-Search the indexed codebase using natural language queries within a specified absolute path.
+🔍 Semantic code search with automatic token optimization
 
-⚠️ **IMPORTANT**:
-- You MUST provide an absolute path.
+USE WHEN: Looking for code by concept ("authentication logic", "error handling")
+DON'T USE: Searching for known symbols (use Serena's find_symbol instead)
 
-🎯 **When to Use**:
-This tool is versatile and can be used before completing various tasks to retrieve relevant context:
-- **Code search**: Find specific functions, classes, or implementations
-- **Context-aware assistance**: Gather relevant code context before making changes
-- **Issue identification**: Locate problematic code sections or bugs
-- **Code review**: Understand existing implementations and patterns
-- **Refactoring**: Find all related code pieces that need to be updated
-- **Feature development**: Understand existing architecture and similar implementations
-- **Duplicate detection**: Identify redundant or duplicated code patterns across the codebase
+BASIC USAGE:
+  search_code({ path: ".", query: "how is auth handled?" })
 
-✨ **Usage Guidance**:
-- If the codebase is not indexed, this tool will return a clear error message indicating that indexing is required first.
-- You can then use the index_codebase tool to index the codebase before searching again.
+RETURNS: Automatically optimized based on result count
+  • 1-3 results: Full code details (0% savings)
+  • 4-10 results: Compact summaries (~50% smaller)
+  • 11-25 results: High-level summaries (~75% smaller)
+  • 26+ results: File paths only (~90% smaller)
+
+OPTIONAL PARAMS:
+  • limit: Max results (default: 10)
+  • detail: Override auto-format ("full"|"compact"|"summary"|"locations")
+  • extensionFilter: File types (e.g., [".ts", ".js"])
+
+EXAMPLES:
+  Basic:    search_code({ path: ".", query: "JWT token generation" })
+  Limited:  search_code({ path: "src/", query: "error handling", limit: 5 })
+  Paths:    search_code({ path: ".", query: "API routes", detail: "locations" })
+
+⚠️ IMPORTANT: You MUST provide an absolute path.
+✨ If the codebase is not indexed, use index_codebase first.
 `;
 
         // Define available tools
@@ -191,6 +199,12 @@ This tool is versatile and can be used before completing various tasks to retrie
                                     description: "Maximum number of results to return",
                                     default: 10,
                                     maximum: 50
+                                },
+                                detail: {
+                                    type: "string",
+                                    enum: ["auto", "full", "compact", "summary", "locations"],
+                                    description: "Result detail level: 'auto' (detect based on count, default), 'full' (complete code), 'compact' (50% smaller), 'summary' (75% smaller), 'locations' (90% smaller, paths only)",
+                                    default: "auto"
                                 },
                                 extensionFilter: {
                                     type: "array",

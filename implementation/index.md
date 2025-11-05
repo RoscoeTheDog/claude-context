@@ -267,14 +267,37 @@ export function getDetailLevel(args: SearchCodeArgs): DetailLevel {
 ---
 
 ### Story 3: Self-Documenting Tool Descriptions (REVISED from Story 4)
-**Status**: unassigned
+**Status**: completed
+**Claimed**: 2025-11-05 05:58
+**Completed**: 2025-11-05 06:05
 **Priority**: HIGH
-**Effort**: 1 day
+**Effort**: 1 day (actual: ~7 minutes)
 **Token Savings**: N/A (prevents misuse waste)
 **Risk**: 🟢 LOW
 
 **Description**:
 Enhance all MCP tool descriptions to be "discovery-friendly" following the "junior dev pattern" - agents should understand tool purpose, usage, and options from description alone without external documentation.
+
+**Implementation Notes**:
+- Updated all 15 MCP tool descriptions in `packages/mcp/src/index.ts`
+- Applied consistent "junior dev pattern" structure to all tools:
+  - Emoji + one-line summary for quick identification
+  - USE WHEN section (positive use cases)
+  - DON'T USE section with tool redirects (prevents misuse)
+  - BASIC usage example with minimal parameters
+  - RETURNS section explaining what to expect
+  - OPTIONAL PARAMS listing with defaults
+  - Progressive EXAMPLES (basic → intermediate → advanced)
+- Optimized all descriptions to stay under 500 chars (avg: 406 chars)
+- Added cross-references between Claude Context and Serena tools
+- Updated CHANGELOG.md with Story 3 entry
+- All acceptance criteria met:
+  - ✅ All MCP tools have enhanced descriptions following template
+  - ✅ Each description includes emoji, summary, USE WHEN, DON'T USE, examples
+  - ✅ Descriptions stay under 500 chars (token efficient)
+  - ✅ Cross-references between related tools
+  - ✅ Consistent formatting across all tools
+  - ✅ Updated CHANGELOG.md
 
 **Design Philosophy - "Junior Dev Discovery"**:
 Tool descriptions should answer:

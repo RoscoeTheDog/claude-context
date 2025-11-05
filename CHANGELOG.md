@@ -37,6 +37,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - `getAllFeatureFlags()` - Get all flags as object (for logging/debugging)
     - `getFeatureFlagsSummary()` - Get human-readable status summary
 
+- **Self-Documenting Tool Descriptions (v0.5.0 Story 3)**: Enhanced all MCP tool descriptions for agent discoverability
+  - **Junior dev discovery pattern**: Tools now answer "What?", "When?", "When NOT?", "How?", "Options?", "Examples?"
+  - **Updated 15 MCP tools** with consistent formatting:
+    - Emoji + one-line summary for quick identification
+    - USE WHEN section (positive use cases)
+    - DON'T USE section with redirects to correct tools (prevents misuse)
+    - BASIC usage example with minimal parameters
+    - RETURNS section explaining what agents should expect
+    - OPTIONAL PARAMS listing with defaults
+    - Progressive EXAMPLES (basic → intermediate → advanced)
+  - **Cross-references**: Clear guidance on when to use Claude Context vs Serena tools
+  - **Token efficient**: All descriptions under 500 chars (avg: 406 chars)
+  - **Prevents tool misuse**: Clear anti-patterns reduce wasted token usage from incorrect tool selection
+  - **Zero learning curve**: Agents discover tool capabilities from schema alone (no external docs required)
+
 ---
 
 ## [0.4.0] - 2025-11-04

@@ -84,19 +84,31 @@ class ContextMcpServer {
 
     private setupTools() {
         const index_description = `
-Index a codebase directory to enable semantic search using a configurable code splitter.
+📚 Index a codebase to enable semantic search
 
-⚠️ **IMPORTANT**:
-- You MUST provide an absolute path to the target codebase.
+USE WHEN: First time using search_code or after major codebase changes
+DON'T USE: Repeatedly on same path (use sync_now for updates)
 
-✨ **Parent Index Detection**:
-- By default (scope="auto"), this tool automatically detects parent indexes
-- If a parent index exists, it will be reused instead of creating a duplicate
-- Use scope="local" to force indexing only the specified directory
+BASIC USAGE:
+  index_codebase({ path: "/absolute/path/to/project" })
 
-✨ **Usage Guidance**:
-- This tool is typically used when search fails due to an unindexed codebase.
-- If indexing is attempted on an already indexed path, and a conflict is detected, you MUST prompt the user to confirm whether to proceed with a force index (i.e., re-indexing and overwriting the previous index).
+RETURNS: Indexing status with progress updates
+  • Automatically detects parent indexes (avoids duplicates)
+  • AST-based splitting (syntax-aware, default)
+  • Indexes in background (non-blocking)
+
+OPTIONAL PARAMS:
+  • force: Re-index even if exists (default: false)
+  • scope: "auto" (detect parent) or "local" (this dir only)
+  • splitter: "ast" (syntax-aware) or "langchain" (text-based)
+
+EXAMPLES:
+  Basic:    index_codebase({ path: "." })
+  Force:    index_codebase({ path: ".", force: true })
+  Custom:   index_codebase({ path: ".", customExtensions: [".vue"] })
+
+⚠️ ABSOLUTE paths required. Use pwd or __dirname.
+✨ Conflict detected? Prompt user before force=true.
 `;
 
 
@@ -220,7 +232,24 @@ EXAMPLES:
                     },
                     {
                         name: "clear_index",
-                        description: `Clear the search index. IMPORTANT: You MUST provide an absolute path.`,
+                        description: `
+🗑️ Clear search index for a codebase
+
+USE WHEN: Removing old project or fixing corrupted index
+DON'T USE: For updates (use sync_now instead)
+
+BASIC USAGE:
+  clear_index({ path: "/absolute/path/to/project" })
+
+RETURNS: Confirmation of index deletion
+  ⚠️ DESTRUCTIVE: Cannot be undone
+  ⚠️ Requires re-indexing to search again
+
+EXAMPLE:
+  clear_index({ path: "." })
+
+⚠️ ABSOLUTE paths required. Prompts for confirmation recommended.
+`,
                         inputSchema: {
                             type: "object",
                             properties: {
@@ -234,7 +263,25 @@ EXAMPLES:
                     },
                     {
                         name: "get_indexing_status",
-                        description: `Get the current indexing status of a codebase. Shows progress percentage for actively indexing codebases and completion status for indexed codebases.`,
+                        description: `
+📊 Check indexing progress for a codebase
+
+USE WHEN: After calling index_codebase (monitoring progress)
+DON'T USE: For sync status (use get_sync_status instead)
+
+BASIC USAGE:
+  get_indexing_status({ path: "/absolute/path/to/project" })
+
+RETURNS: Progress status
+  • indexing: Shows % complete (e.g., "45% complete")
+  • completed: Index ready for searches
+  • not_indexed: Path not indexed yet
+
+EXAMPLE:
+  get_indexing_status({ path: "." })
+
+⚠️ ABSOLUTE paths required.
+`,
                         inputSchema: {
                             type: "object",
                             properties: {
@@ -248,7 +295,23 @@ EXAMPLES:
                     },
                     {
                         name: "get_index_tree",
-                        description: `View the directory tree structure of an indexed codebase with file and chunk statistics. Shows only indexed files (not filesystem). Use relative_path to focus on a specific subdirectory.`,
+                        description: `
+🌳 View indexed file tree with statistics
+
+USE WHEN: Exploring indexed structure
+DON'T USE: For filesystem tree (use bash 'tree')
+
+BASIC: get_index_tree({ path: "." })
+
+RETURNS: Tree of indexed files with chunk stats
+OPTIONAL: depth (default: 3), relative_path (focus subdir), show_files
+
+EXAMPLES:
+  Basic:  get_index_tree({ path: "." })
+  Subdir: get_index_tree({ path: ".", relative_path: "src/" })
+
+⚠️ ABSOLUTE paths required.
+`,
                         inputSchema: {
                             type: "object",
                             properties: {
@@ -287,7 +350,18 @@ EXAMPLES:
                     },
                     {
                         name: "enable_realtime_sync",
-                        description: `Enable real-time filesystem sync for an indexed codebase. This will automatically update the search index when files are added, changed, or deleted.`,
+                        description: `
+🔄 Enable auto-sync when files change
+
+USE WHEN: Active development
+DON'T USE: One-time searches or read-only codebases
+
+BASIC: enable_realtime_sync({ path: "." })
+
+RETURNS: Sync enabled, watches file changes, updates index automatically
+
+⚠️ ABSOLUTE paths required. Disable with disable_realtime_sync.
+`,
                         inputSchema: {
                             type: "object",
                             properties: {
@@ -301,7 +375,25 @@ EXAMPLES:
                     },
                     {
                         name: "disable_realtime_sync",
-                        description: `Disable real-time filesystem sync for a codebase.`,
+                        description: `
+⏸️ Stop auto-sync for a codebase
+
+USE WHEN: Finished with active development or reducing resource usage
+DON'T USE: During active development (miss updates)
+
+BASIC USAGE:
+  disable_realtime_sync({ path: "/absolute/path/to/project" })
+
+RETURNS: Sync disabled confirmation
+  • Stops filesystem watching
+  • Index remains (not deleted)
+  • Use sync_now for manual updates
+
+EXAMPLE:
+  disable_realtime_sync({ path: "." })
+
+⚠️ ABSOLUTE paths required.
+`,
                         inputSchema: {
                             type: "object",
                             properties: {
@@ -315,7 +407,18 @@ EXAMPLES:
                     },
                     {
                         name: "get_realtime_sync_status",
-                        description: `Get the status of real-time filesystem sync for a specific codebase or all codebases.`,
+                        description: `
+📡 Check if auto-sync is enabled
+
+USE WHEN: Verifying sync state
+DON'T USE: For indexing progress (use get_indexing_status)
+
+BASIC: get_realtime_sync_status({ path: "." }) or get_realtime_sync_status({}) for all
+
+RETURNS: enabled/disabled status for one or all codebases
+
+⚠️ ABSOLUTE paths required (if providing path).
+`,
                         inputSchema: {
                             type: "object",
                             properties: {
@@ -329,7 +432,26 @@ EXAMPLES:
                     },
                     {
                         name: "get_sync_status",
-                        description: `Get detailed sync status and metrics for a codebase, including real-time sync state, performance statistics, and cache information.`,
+                        description: `
+📈 Detailed sync metrics for a codebase
+
+USE WHEN: Debugging sync issues or checking performance
+DON'T USE: For simple enabled/disabled check (use get_realtime_sync_status)
+
+BASIC USAGE:
+  get_sync_status({ path: "/absolute/path/to/project" })
+
+RETURNS: Comprehensive sync data
+  • Realtime sync state (enabled/disabled)
+  • Last sync time and duration
+  • Cache hit/miss rates
+  • Performance statistics
+
+EXAMPLE:
+  get_sync_status({ path: "." })
+
+⚠️ ABSOLUTE paths required.
+`,
                         inputSchema: {
                             type: "object",
                             properties: {
@@ -343,7 +465,25 @@ EXAMPLES:
                     },
                     {
                         name: "sync_now",
-                        description: `Manually trigger an immediate sync for a codebase, bypassing normal sync intervals. Reports detailed results of the sync operation.`,
+                        description: `
+⚡ Force immediate index update
+
+USE WHEN: After bulk file changes or when sync disabled
+DON'T USE: When realtime sync is active (redundant)
+
+BASIC USAGE:
+  sync_now({ path: "/absolute/path/to/project" })
+
+RETURNS: Sync operation results
+  • Files added/modified/deleted
+  • Sync duration and performance
+  • Bypasses sync intervals (immediate)
+
+EXAMPLE:
+  sync_now({ path: "." })
+
+⚠️ ABSOLUTE paths required. Prefer enable_realtime_sync for auto-updates.
+`,
                         inputSchema: {
                             type: "object",
                             properties: {
@@ -357,7 +497,18 @@ EXAMPLES:
                     },
                     {
                         name: "get_performance_stats",
-                        description: `Get detailed performance statistics and metrics for sync operations, including cache usage, timing information, and resource utilization.`,
+                        description: `
+📊 Performance metrics for sync operations
+
+USE WHEN: Analyzing performance bottlenecks
+DON'T USE: For basic status (use get_sync_status)
+
+BASIC: get_performance_stats({ path: "." }) or get_performance_stats({}) for global
+
+RETURNS: Cache hit/miss, timings, resource utilization
+
+⚠️ ABSOLUTE paths required (if providing path).
+`,
                         inputSchema: {
                             type: "object",
                             properties: {
@@ -371,7 +522,18 @@ EXAMPLES:
                     },
                     {
                         name: "health_check",
-                        description: `Perform comprehensive system health check and diagnostics, identifying potential issues, warnings, and system status.`,
+                        description: `
+🏥 System health diagnostics
+
+USE WHEN: Troubleshooting issues
+DON'T USE: For routine status (use get_sync_status)
+
+BASIC: health_check({ path: "." }) or health_check({}) for global
+
+RETURNS: ✅healthy / ⚠️warnings / ❌errors, feature flags status
+
+⚠️ ABSOLUTE paths required (if providing path).
+`,
                         inputSchema: {
                             type: "object",
                             properties: {
@@ -385,7 +547,19 @@ EXAMPLES:
                     },
                     {
                         name: "get_sync_history",
-                        description: `Get detailed sync operation history and audit trail, showing past sync operations, timing, and change statistics.`,
+                        description: `
+📜 Audit trail of sync operations
+
+USE WHEN: Debugging sync issues
+DON'T USE: For current status (use get_sync_status)
+
+BASIC: get_sync_history({ path: ".", limit: 10 }) or get_sync_history({}) for global
+
+RETURNS: Timestamp, duration, files changed, success/failure per operation
+OPTIONAL: limit (default: 10, max: 50)
+
+⚠️ ABSOLUTE paths required (if providing path).
+`,
                         inputSchema: {
                             type: "object",
                             properties: {
@@ -405,7 +579,26 @@ EXAMPLES:
                     },
                     {
                         name: "get_codebase_config",
-                        description: "Get the current configuration for a specific indexed codebase. Returns ignore patterns, file size limits, and other indexing settings.",
+                        description: `
+⚙️ View codebase indexing configuration
+
+USE WHEN: Checking current ignore patterns or indexing settings
+DON'T USE: For general status (use health_check)
+
+BASIC USAGE:
+  get_codebase_config({ path: "/absolute/path/to/project" })
+
+RETURNS: Configuration details
+  • Ignore patterns (e.g., node_modules/**)
+  • File size limits
+  • Extension filters
+  • Indexing options (symlinks, hidden files)
+
+EXAMPLE:
+  get_codebase_config({ path: "." })
+
+⚠️ ABSOLUTE paths required.
+`,
                         inputSchema: {
                             type: "object",
                             properties: {
@@ -419,7 +612,19 @@ EXAMPLES:
                     },
                     {
                         name: "update_codebase_config",
-                        description: "Update configuration for a specific codebase. All parameters are optional - only provided values will be updated. Configuration is stored in the database and persists across sessions.",
+                        description: `
+🔧 Modify indexing configuration
+
+USE WHEN: Customizing ignore patterns or indexing behavior
+DON'T USE: For re-indexing (use index_codebase with force)
+
+BASIC: update_codebase_config({ path: ".", ignorePatterns: ["*.log"] })
+
+OPTIONAL: ignorePatterns, maxFileSize, fileExtensions
+Stored in DB, persists across sessions. Run sync_now to apply.
+
+⚠️ ABSOLUTE paths required.
+`,
                         inputSchema: {
                             type: "object",
                             properties: {
@@ -459,7 +664,18 @@ EXAMPLES:
                     },
                     {
                         name: "reset_codebase_config",
-                        description: "Reset configuration to defaults for a specific codebase. This removes all custom ignore patterns and restores default settings (index everything).",
+                        description: `
+🔄 Reset configuration to defaults
+
+USE WHEN: Removing custom settings
+DON'T USE: For clearing index (use clear_index)
+
+BASIC: reset_codebase_config({ path: "." })
+
+RETURNS: Removes custom patterns, restores defaults. Run sync_now to apply.
+
+⚠️ ABSOLUTE paths required.
+`,
                         inputSchema: {
                             type: "object",
                             properties: {
@@ -473,7 +689,23 @@ EXAMPLES:
                     },
                     {
                         name: "list_codebase_configs",
-                        description: "List all codebases that have custom configurations stored in the database.",
+                        description: `
+📋 List codebases with custom configurations
+
+USE WHEN: Discovering which codebases have custom settings
+DON'T USE: For checking single codebase (use get_codebase_config)
+
+BASIC USAGE:
+  list_codebase_configs({})
+
+RETURNS: List of configured codebases
+  • Shows all codebases with custom settings
+  • Paths and summary of configuration
+  • Excludes default/unconfigured codebases
+
+EXAMPLE:
+  list_codebase_configs({})
+`,
                         inputSchema: {
                             type: "object",
                             properties: {},

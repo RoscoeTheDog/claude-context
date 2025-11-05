@@ -52,6 +52,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Prevents tool misuse**: Clear anti-patterns reduce wasted token usage from incorrect tool selection
   - **Zero learning curve**: Agents discover tool capabilities from schema alone (no external docs required)
 
+- **Integration Testing Suite (v0.5.0 Story 4)**: Comprehensive test coverage for token efficiency features
+  - **2 new integration test suites** covering real-world agent workflows:
+    - `smart-defaults.test.ts` (70+ tests) - Smart defaults, backward compatibility, progressive disclosure
+    - `auto-detection.test.ts` (36+ tests) - Threshold boundaries, accuracy, performance validation
+  - **Existing test suites** already covered:
+    - `token-efficiency.test.ts` (22 tests) - Token reduction targets (50%, 75%, 90%)
+    - `feature-flags.test.ts` (24 tests) - Flag behavior and silent fallbacks
+    - `formatters.test.ts` (23 tests) - Auto-detection and formatter outputs
+  - **175+ total tests** for token efficiency features (all passing)
+  - **Real-world scenarios tested**:
+    - Zero-thought workflows (beginner agents using defaults)
+    - Power user overrides (explicit detail parameter)
+    - Backward compatibility (existing code unchanged)
+    - Boundary conditions (threshold edges: 3, 4, 10, 11, 25, 26 results)
+    - Performance validation (O(1) auto-detection, <10ms per 1000 operations)
+    - Edge cases (0 results, 1 result, 100+ results)
+  - **Token efficiency validation**:
+    - Compact mode: 50% reduction (±20%)
+    - Summary mode: 75% reduction (±20%)
+    - Locations mode: 90% reduction (±10%)
+  - **Quality metrics**:
+    - 100% backward compatibility (all existing tests pass)
+    - Zero breaking changes (existing calls work unchanged)
+    - Progressive disclosure validated (3 tiers: beginner → intermediate → advanced)
+    - Auto-detection accuracy: 100% consistency across multiple runs
+
 ---
 
 ## [0.4.0] - 2025-11-04

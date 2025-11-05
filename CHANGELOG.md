@@ -7,7 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-No unreleased changes.
+### Added
+
+- **Feature Flag Infrastructure (v0.5.0)**: Centralized system for controlling optional token efficiency enhancements
+  - **2 feature flags** with environment variable support:
+    - `CC_SMART_RESULTS` - Smart adaptive search results (40-70% token reduction, Story 1)
+    - `CC_ALLOW_EXPERIMENTAL` - Global experimental features toggle
+  - **Safety-first design**: All flags default to OFF (disabled) for backward compatibility
+  - **Silent fallback behavior**: Features gracefully fallback to legacy behavior when disabled (no errors thrown)
+  - **Health check integration**: Feature flag status visible in `health_check` MCP tool output
+  - **Comprehensive testing**: 24 unit tests covering flag parsing, environment variables, and fallback behavior
+  - **Documentation**: Detailed usage guide in environment-variables.md with examples
+  - **Implementation**: New `feature-flags.ts` module with helper functions:
+    - `FEATURE_FLAGS` - Immutable flag configuration object
+    - `isFeatureEnabled()` - Check if specific feature is enabled
+    - `getAllFeatureFlags()` - Get all flags as object (for logging/debugging)
+    - `getFeatureFlagsSummary()` - Get human-readable status summary
 
 ---
 

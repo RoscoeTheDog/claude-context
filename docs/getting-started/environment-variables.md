@@ -64,6 +64,47 @@ Claude Context supports a global configuration file at `~/.context/.env` to simp
 | `CUSTOM_EXTENSIONS` | Additional file extensions to include (comma-separated, e.g., `.vue,.svelte,.astro`) | None |
 | `CUSTOM_IGNORE_PATTERNS` | Additional ignore patterns (comma-separated, e.g., `temp/**,*.backup,private/**`) | None |
 
+### Feature Flags (v0.5.0+)
+
+Feature flags control optional token efficiency enhancements. All flags default to **disabled** for maximum safety and backward compatibility.
+
+| Variable | Description | Default | Version |
+|----------|-------------|---------|---------|
+| `CC_SMART_RESULTS` | Enable smart adaptive search results with automatic token optimization (40-70% reduction) | `false` | v0.5.0+ |
+| `CC_ALLOW_EXPERIMENTAL` | Enable all experimental token efficiency features | `false` | v0.5.0+ |
+
+**Usage Examples:**
+
+```bash
+# Enable smart adaptive results
+CC_SMART_RESULTS=true npx @zilliz/claude-context-mcp@latest
+
+# Enable all experimental features
+CC_ALLOW_EXPERIMENTAL=true npx @zilliz/claude-context-mcp@latest
+
+# Add to global config
+echo "CC_SMART_RESULTS=true" >> ~/.context/.env
+```
+
+**Accepted Values:**
+- Enable: `true`, `1`, `yes` (case-insensitive)
+- Disable: `false`, `0`, `no`, or any other value
+
+**Feature Details:**
+
+- **`CC_SMART_RESULTS`** (Story 1): Automatically adapts search result format based on result count:
+  - 1-3 results: Full detail (0% savings)
+  - 4-10 results: Compact mode (50% token savings)
+  - 11-25 results: Summary mode (75% token savings)
+  - 26+ results: Locations only (90% token savings)
+
+  When disabled: Always returns full detail (legacy behavior).
+
+**Safety Notes:**
+- All features use silent fallback (no errors when disabled)
+- Features can be disabled at any time via environment variables
+- Default OFF (opt-in) ensures backward compatibility
+
 ## 🚀 Quick Setup
 
 ### 1. Create Global Config

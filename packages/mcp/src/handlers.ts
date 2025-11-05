@@ -5,6 +5,7 @@ import { Context, COLLECTION_LIMIT_MESSAGE } from "@zilliz/claude-context-core";
 import { SnapshotManager } from "./snapshot.js";
 import { ensureAbsolutePath, truncateContent, trackCodebasePath, findParentIndex } from "./utils.js";
 import { buildTreeFromPaths, calculateStats, renderTree, renderList, type FileInfo, type RenderOptions } from "./tree-builder.js";
+import { getAllFeatureFlags, getFeatureFlagsSummary } from "./config/feature-flags.js";
 
 export class ToolHandlers {
     private context: Context;
@@ -1719,6 +1720,13 @@ export class ToolHandlers {
             healthReport += `• Check completed in: ${checkTime}ms\n`;
             healthReport += `• Issues found: ${issues.length}\n`;
             healthReport += `• Warnings: ${warnings.length}\n`;
+
+            // Feature Flags Status
+            healthReport += `\nFeature Flags (v0.5.0):\n`;
+            const featureFlags = getAllFeatureFlags();
+            for (const [flagName, enabled] of Object.entries(featureFlags)) {
+                healthReport += `• ${flagName}: ${enabled ? '✓ enabled' : '✗ disabled'}\n`;
+            }
 
             if (issues.length > 0) {
                 healthReport += `\nISSUES:\n${issues.map(issue => `  - ${issue}`).join('\n')}\n`;

@@ -186,14 +186,33 @@ EXAMPLES:
 ---
 
 ### Story 2: Feature Flag Infrastructure
-**Status**: unassigned
+**Status**: completed
+**Claimed**: 2025-11-04 22:23
+**Completed**: 2025-11-04 22:30
 **Priority**: HIGH
-**Effort**: 1 day
+**Effort**: 1 day (actual: ~30 minutes)
 **Token Savings**: N/A (enabler)
 **Risk**: 🟢 LOW
 
 **Description**:
 Create centralized feature flag system to allow disabling enhancements if agents get confused or issues arise.
+
+**Implementation Notes**:
+- Created `packages/mcp/src/config/feature-flags.ts` with full feature flag infrastructure
+- Added 2 feature flags: `CC_SMART_RESULTS` and `CC_ALLOW_EXPERIMENTAL`
+- Integrated feature flag status into `health_check` MCP tool output
+- Created comprehensive test suite (24 unit tests, all passing)
+- Documented flags in `docs/getting-started/environment-variables.md`
+- Updated `CHANGELOG.md` with feature details
+- All acceptance criteria met:
+  - ✅ Created feature-flags.ts with flag definitions
+  - ✅ Environment variable support (CC_FEATURE_*)
+  - ✅ Default all new features to OFF (opt-in)
+  - ✅ Silent fallbacks (no errors thrown)
+  - ✅ Flag status in health_check output
+  - ✅ Unit tests for flag parsing and silent fallback
+  - ✅ Documentation in environment-variables.md
+  - ✅ Updated CHANGELOG.md
 
 **Rationale**:
 - Safety net for production rollout

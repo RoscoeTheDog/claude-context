@@ -672,8 +672,27 @@ export class ToolHandlers {
             trackCodebasePath(absolutePath);
 
             // Check if this codebase is indexed or being indexed
-            const isIndexed = this.snapshotManager.getIndexedCodebases().includes(absolutePath);
-            const isIndexing = this.snapshotManager.getIndexingCodebases().includes(absolutePath);
+            // Support searching in subdirectories of indexed parent projects
+            let effectiveIndexPath = absolutePath;
+            let isIndexed = this.snapshotManager.getIndexedCodebases().includes(absolutePath);
+            let isIndexing = this.snapshotManager.getIndexingCodebases().includes(absolutePath);
+
+            // If not directly indexed, check for parent index
+            if (!isIndexed && !isIndexing) {
+                const parentResult = findParentIndex(absolutePath, this.snapshotManager);
+                if (parentResult.found && parentResult.parentPath) {
+                    // Check if parent is indexed or indexing
+                    const parentIndexed = this.snapshotManager.getIndexedCodebases().includes(parentResult.parentPath);
+                    const parentIndexing = this.snapshotManager.getIndexingCodebases().includes(parentResult.parentPath);
+
+                    if (parentIndexed || parentIndexing) {
+                        effectiveIndexPath = parentResult.parentPath;
+                        isIndexed = parentIndexed;
+                        isIndexing = parentIndexing;
+                        console.log(`[SEARCH] Using parent index at '${parentResult.parentPath}' for subdirectory '${absolutePath}'`);
+                    }
+                }
+            }
 
             if (!isIndexed && !isIndexing) {
                 return {
@@ -688,7 +707,7 @@ export class ToolHandlers {
             // NEW: Pre-search sync check to guarantee fresh index (controlled by ENABLE_PRE_SEARCH_SYNC)
             const preSearchSyncEnabled = process.env.ENABLE_PRE_SEARCH_SYNC !== 'false'; // Default to true
             if (isIndexed && !isIndexing && preSearchSyncEnabled) {
-                const syncResult = await this.quickSyncCheck(absolutePath);
+                const syncResult = await this.quickSyncCheck(effectiveIndexPath);
                 
                 if (syncResult.hasChanges) {
                     console.log(`[PRE-SEARCH] Detected ${syncResult.changedFiles.length} changed files (${syncResult.fromCache ? 'cached' : 'fresh check'} in ${syncResult.syncTime}ms)`);
@@ -696,12 +715,12 @@ export class ToolHandlers {
                     
                     try {
                         const updateStart = Date.now();
-                        await this.context.reindexByChange(absolutePath);
+                        await this.context.reindexByChange(effectiveIndexPath);
                         const updateTime = Date.now() - updateStart;
                         console.log(`[PRE-SEARCH] Index updated successfully in ${updateTime}ms`);
-                        
+
                         // Clear cache after successful update
-                        this.lastSyncCache.delete(absolutePath);
+                        this.lastSyncCache.delete(effectiveIndexPath);
                     } catch (error) {
                         console.warn(`[PRE-SEARCH] WARNING: Index update failed, continuing with existing index:`, error);
                     }
@@ -719,6 +738,9 @@ export class ToolHandlers {
             }
 
             console.log(`[SEARCH] Searching in codebase: ${absolutePath}`);
+            if (effectiveIndexPath !== absolutePath) {
+                console.log(`[SEARCH] Using parent index: ${effectiveIndexPath}`);
+            }
             console.log(`[SEARCH] Query: "${query}"`);
             console.log(`[SEARCH] Indexing status: ${isIndexing ? 'In Progress' : 'Completed'}`);
 
@@ -745,9 +767,9 @@ export class ToolHandlers {
                 filterExpr = `fileExtension in [${quoted}]`;
             }
 
-            // Search in the specified codebase
+            // Search in the specified codebase (using effective index path for parent indexes)
             const searchResults = await this.context.semanticSearch(
-                absolutePath,
+                effectiveIndexPath,
                 query,
                 Math.min(resultLimit, 50),
                 0.3,
@@ -848,8 +870,27 @@ export class ToolHandlers {
             }
 
             // Check if codebase is indexed
-            const isIndexed = this.snapshotManager.getIndexedCodebases().includes(absolutePath);
-            const isIndexing = this.snapshotManager.getIndexingCodebases().includes(absolutePath);
+            // Support tree view for subdirectories of indexed parent projects
+            let effectiveIndexPath = absolutePath;
+            let isIndexed = this.snapshotManager.getIndexedCodebases().includes(absolutePath);
+            let isIndexing = this.snapshotManager.getIndexingCodebases().includes(absolutePath);
+
+            // If not directly indexed, check for parent index
+            if (!isIndexed && !isIndexing) {
+                const parentResult = findParentIndex(absolutePath, this.snapshotManager);
+                if (parentResult.found && parentResult.parentPath) {
+                    // Check if parent is indexed or indexing
+                    const parentIndexed = this.snapshotManager.getIndexedCodebases().includes(parentResult.parentPath);
+                    const parentIndexing = this.snapshotManager.getIndexingCodebases().includes(parentResult.parentPath);
+
+                    if (parentIndexed || parentIndexing) {
+                        effectiveIndexPath = parentResult.parentPath;
+                        isIndexed = parentIndexed;
+                        isIndexing = parentIndexing;
+                        console.log(`[INDEX-TREE] Using parent index at '${parentResult.parentPath}' for subdirectory '${absolutePath}'`);
+                    }
+                }
+            }
 
             if (!isIndexed && !isIndexing) {
                 return {
@@ -865,7 +906,7 @@ export class ToolHandlers {
             // Note: Milvus has a maximum limit of 16384 results per query
             // For most codebases this should be sufficient
             const vectorDb = this.context.getVectorDatabase();
-            const collectionName = this.context.getCollectionName(absolutePath);
+            const collectionName = this.context.getCollectionName(effectiveIndexPath);
 
             const allChunks = await vectorDb.query(
                 collectionName,

@@ -48,6 +48,10 @@ export interface HybridSearchResult {
 
 export interface VectorDatabase {
     /**
+     * Ensure the database is initialized
+     */
+    ensureInitialized(): Promise<void>;
+    /**
      * Create collection
      * @param collectionName Collection name
      * @param dimension Vector dimension

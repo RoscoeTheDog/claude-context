@@ -169,7 +169,7 @@ export class MilvusVectorDatabase implements VectorDatabase {
     /**
      * Ensure initialization is complete before method execution
      */
-    protected async ensureInitialized(): Promise<void> {
+    public async ensureInitialized(): Promise<void> {
         await this.initializationPromise;
         if (!this.client) {
             throw new Error('Client not initialized');

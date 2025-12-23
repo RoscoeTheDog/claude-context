@@ -108,7 +108,7 @@ export class MilvusRestfulVectorDatabase implements VectorDatabase {
     /**
      * Ensure initialization is complete before method execution
      */
-    protected async ensureInitialized(): Promise<void> {
+    public async ensureInitialized(): Promise<void> {
         await this.initializationPromise;
         if (!this.baseUrl) {
             throw new Error('Base URL not initialized');

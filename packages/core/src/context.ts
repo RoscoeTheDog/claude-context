@@ -76,7 +76,7 @@ export class Context {
         this.codeSplitter = config.codeSplitter || new AstCodeSplitter(2500, 300);
 
         // Initialize codebase configuration manager
-        this.configManager = new CodebaseConfigManager(this.vectorDatabase.getClient());
+        this.configManager = new CodebaseConfigManager(null);
 
         // Load custom extensions from environment variables
         const envCustomExtensions = this.getCustomExtensionsFromEnv();
@@ -156,6 +156,10 @@ export class Context {
      * Initialize the context (async initialization for config manager)
      */
     async initialize(): Promise<void> {
+        // Ensure vector database is initialized first
+        await this.vectorDatabase.ensureInitialized();
+        // Set the client in configManager after vectorDB is ready
+        this.configManager.setClient(this.vectorDatabase.getClient());
         await this.configManager.initialize();
         console.log('[Context] ✅ Configuration manager initialized');
     }

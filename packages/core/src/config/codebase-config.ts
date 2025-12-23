@@ -39,6 +39,14 @@ export class CodebaseConfigManager {
     private configCache = new Map<string, CodebaseConfig>();
 
     constructor(client: MilvusClient | null) {
+
+        this.client = client;
+    }
+
+    /**
+     * Set the Milvus client (called after vectorDB initialization)
+     */
+    setClient(client: MilvusClient | null): void {
         this.client = client;
     }
 
